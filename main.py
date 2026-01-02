@@ -8,11 +8,13 @@ try:
     import psutil
 except ImportError:
     psutil = None
+import base64
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QHBoxLayout, QLineEdit, QPushButton, QLabel,
                                QFileDialog, QSpinBox, QListWidget, QMessageBox,
                                QPlainTextEdit, QTabWidget, QCheckBox, QComboBox, QInputDialog)
-from PySide6.QtCore import QProcess
+from PySide6.QtCore import QProcess, QByteArray
+from PySide6.QtGui import QIcon, QPixmap
 
 
 class QemuNexus(QMainWindow):
@@ -465,9 +467,49 @@ class QemuNexus(QMainWindow):
             line.setText(f)
 
 
+# -------------------- ICON: load from icon.txt --------------------
+
+
+def read_icon_base64_from_file() -> str:
+    """Шукає icon.txt у тій же папці, що й скрипт, або в поточній робочій директорії.
+    Повертає рядок base64 (без коментарів/порожніх рядків) або порожній рядок якщо не знайдено/помилка.
+    """
+    candidates = [Path(__file__).parent / "icon.txt", Path.cwd() / "icon.txt"]
+    for p in candidates:
+        if p.exists():
+            try:
+                raw = p.read_text(encoding="utf-8")
+                # прибираємо коментарі (рядки що починаються з #) та порожні рядки
+                lines = [ln.strip() for ln in raw.splitlines() if ln.strip() and not ln.strip().startswith('#')]
+                return ''.join(lines)
+            except Exception:
+                continue
+    return ''
+
+
+def load_window_icon_from_base64(b64: str) -> QIcon:
+    """Декодує base64 і повертає QIcon. Без тимчасових файлів."""
+    try:
+        raw = base64.b64decode(b64.encode('utf-8'))
+    except Exception:
+        # якщо base64 некоректний — повернути пусту іконку
+        return QIcon()
+    pixmap = QPixmap()
+    # QPixmap.loadFromData в PySide6 приймає bytes або QByteArray
+    pixmap.loadFromData(QByteArray(raw))
+    return QIcon(pixmap)
+
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+
+    # намагаємось прочитати icon.txt у тій же папці, що й скрипт
+    b64 = read_icon_base64_from_file()
+    icon = load_window_icon_from_base64(b64) if b64 else QIcon()
+    app.setWindowIcon(icon)
+
     window = QemuNexus()
+    window.setWindowIcon(icon)
     window.show()
     sys.exit(app.exec())
