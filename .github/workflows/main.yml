@@ -1,0 +1,95 @@
+name: Build MGUI_QEMU Multi-Platform
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-main:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: MGUI_QEMU_Windows
+            executable_path: dist/MGUI_QEMU.exe
+            data_sep: ';'
+          - os: ubuntu-latest
+            artifact_name: MGUI_QEMU_Ubuntu
+            executable_path: dist/MGUI_QEMU
+            data_sep: ':'
+          - os: macos-latest
+            artifact_name: MGUI_QEMU_MacOS
+            executable_path: dist/MGUI_QEMU
+            data_sep: ':'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install PySide6 psutil pyinstaller
+
+      - name: Build with PyInstaller
+        run: |
+          # Передаємо аргумент через знак = та лапки для уникнення помилок синтаксису
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
+          --add-data="icon.txt${{ matrix.data_sep }}." main.py
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.executable_path }}
+
+  build-linux-distros:
+    name: Build for ${{ matrix.distro }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: archlinux
+            image: archlinux:latest
+            artifact_name: MGUI_QEMU_Arch
+          - distro: fedora
+            image: fedora:latest
+            artifact_name: MGUI_QEMU_Fedora
+    container:
+      image: ${{ matrix.image }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          if [ "${{ matrix.distro }}" = "archlinux" ]; then
+            pacman -Syu --noconfirm python python-pip qt6-base base-devel binutils
+          else
+            dnf install -y python3 python3-pip qt6-qtbase-devel gcc binutils
+          fi
+
+      - name: Build EXE (Linux Native)
+        run: |
+          python3 -m pip install --upgrade pip --break-system-packages
+          python3 -m pip install PySide6 psutil pyinstaller --break-system-packages
+          # Використовуємо чіткий синтаксис --add-data="..."
+          python3 -m PyInstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
+          --add-data="icon.txt:." main.py
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/MGUI_QEMU
