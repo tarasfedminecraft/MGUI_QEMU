@@ -5,7 +5,8 @@ import shlex
 import socket
 import threading
 import platform
-import time  # Додано для пауз
+import time
+import shutil
 from pathlib import Path
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QHBoxLayout, QLineEdit, QPushButton, QLabel,
@@ -33,7 +34,6 @@ class MguiQemu(QMainWindow):
         self.base_path.mkdir(exist_ok=True)
         self.process = QProcess()
 
-        # Словник архітектур
         self.arch_map = {
             "x86_64": "x86_64", "i386": "i386", "Arm (64-bit)": "aarch64",
             "Arm (32-bit)": "arm", "RISC-V (64-bit)": "riscv64", "RISC-V (32-bit)": "riscv32"
@@ -42,12 +42,10 @@ class MguiQemu(QMainWindow):
         self.init_ui()
         self.apply_system_theme()
 
-        # Сигнали процесу
         self.process.started.connect(self.update_status_ui)
-        self.process.finished.connect(self.on_process_finished)  # Оновлено
+        self.process.finished.connect(self.on_process_finished)
         self.process.readyReadStandardError.connect(self.read_stderr)
 
-        # Таймер статистики
         self.stats_timer = QTimer()
         self.stats_timer.timeout.connect(self.update_stats)
         self.stats_timer.start(2000)
@@ -63,6 +61,7 @@ class MguiQemu(QMainWindow):
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
 
+        # --- Sidebar ---
         sidebar = QVBoxLayout()
         self.vm_list = QListWidget()
         self.vm_list.currentTextChanged.connect(self.load_vm)
@@ -71,9 +70,7 @@ class MguiQemu(QMainWindow):
         self.status_label.setStyleSheet("font-weight: bold; color: gray;")
 
         self.cpu_bar = QProgressBar()
-        self.cpu_bar.setFormat("CPU: %p%")
         self.ram_bar = QProgressBar()
-        self.ram_bar.setFormat("RAM: %p%")
 
         sidebar.addWidget(QLabel("📂 Ваші проекти:"))
         sidebar.addWidget(self.vm_list)
@@ -84,6 +81,7 @@ class MguiQemu(QMainWindow):
         qmp_group = QHBoxLayout()
         for icon, cmd in [("⏸", "stop"), ("▶", "cont"), ("🛑", "system_powerdown")]:
             btn = QPushButton(icon)
+            # Коректне використання аргументів у lambda (c=cmd замикає значення)
             btn.clicked.connect(lambda chk=False, c=cmd: self.send_qmp_command({"execute": c}))
             qmp_group.addWidget(btn)
         sidebar.addLayout(qmp_group)
@@ -96,10 +94,10 @@ class MguiQemu(QMainWindow):
 
         main_layout.addLayout(sidebar, 1)
 
+        # --- Tabs ---
         right_layout = QVBoxLayout()
         self.tabs = QTabWidget()
 
-        # Вкладка Залізо
         self.tab_hw = QWidget()
         hw_l = QFormLayout(self.tab_hw)
         self.f_name = QLineEdit()
@@ -115,6 +113,7 @@ class MguiQemu(QMainWindow):
         self.f_smp = QSpinBox()
         self.f_smp.setRange(1, 32)
         self.f_smp.setValue(2)
+
         hw_l.addRow("Назва:", self.f_name)
         hw_l.addRow("Архітектура:", self.f_arch)
         hw_l.addRow("Машина:", self.f_machine)
@@ -123,7 +122,6 @@ class MguiQemu(QMainWindow):
         hw_l.addRow("Ядра (SMP):", self.f_smp)
         self.tabs.addTab(self.tab_hw, "Залізо")
 
-        # Вкладка Диски
         self.tab_disk = QWidget()
         disk_l = QVBoxLayout(self.tab_disk)
         h_disk = QHBoxLayout()
@@ -132,25 +130,24 @@ class MguiQemu(QMainWindow):
         btn_br.clicked.connect(lambda: self.select_file(self.f_disk))
         h_disk.addWidget(self.f_disk)
         h_disk.addWidget(btn_br)
-        disk_l.addWidget(QLabel("Образ Диска / ISO:"))
-        disk_l.addLayout(h_disk)
         self.f_boot = QComboBox()
         self.f_boot.addItems(["Disk (c)", "CD-ROM (d)"])
+        disk_l.addWidget(QLabel("Образ Диска / ISO:"))
+        disk_l.addLayout(h_disk)
         disk_l.addWidget(QLabel("Завантаження з:"))
         disk_l.addWidget(self.f_boot)
         self.tabs.addTab(self.tab_disk, "Диски")
 
-        # Вкладка Експерт
         self.tab_ex = QWidget()
         ex_l = QVBoxLayout(self.tab_ex)
-        path_group = QHBoxLayout()
         self.f_qemu_path = QLineEdit()
         btn_qemu_br = QPushButton("Огляд")
         btn_qemu_br.clicked.connect(self.select_qemu_executable)
-        path_group.addWidget(self.f_qemu_path)
-        path_group.addWidget(btn_qemu_br)
+        path_h = QHBoxLayout()
+        path_h.addWidget(self.f_qemu_path)
+        path_h.addWidget(btn_qemu_br)
         ex_l.addWidget(QLabel("Шлях до QEMU (Binary):"))
-        ex_l.addLayout(path_group)
+        ex_l.addLayout(path_h)
         self.f_extra = QPlainTextEdit()
         ex_l.addWidget(QLabel("Додаткові аргументи:"))
         ex_l.addWidget(self.f_extra)
@@ -171,22 +168,21 @@ class MguiQemu(QMainWindow):
 
         main_layout.addLayout(right_layout, 3)
 
+        self.setup_connections()
         self.update_qemu_path_auto()
+        self.refresh_list()
 
-        # Зв'язки для оновлення
-        for w in [self.f_arch, self.f_machine, self.f_cpu, self.f_ram, self.f_smp, self.f_boot]:
+    def setup_connections(self):
+        widgets = [self.f_arch, self.f_machine, self.f_cpu, self.f_ram,
+                   self.f_smp, self.f_boot, self.f_disk, self.f_extra, self.f_qemu_path]
+        for w in widgets:
             if isinstance(w, QComboBox):
                 w.currentIndexChanged.connect(self.update_preview)
-            else:
+            elif isinstance(w, QSpinBox):
                 w.valueChanged.connect(self.update_preview)
-
+            elif isinstance(w, (QLineEdit, QPlainTextEdit)):
+                w.textChanged.connect(self.update_preview)
         self.f_arch.currentIndexChanged.connect(self.update_qemu_path_auto)
-        self.f_disk.textChanged.connect(self.update_preview)
-        self.f_extra.textChanged.connect(self.update_preview)
-        self.f_qemu_path.textChanged.connect(self.update_preview)
-
-        self.refresh_list()
-        self.update_preview()
 
     def update_qemu_path_auto(self):
         arch = self.arch_map.get(self.f_arch.currentText(), "x86_64")
@@ -220,9 +216,7 @@ class MguiQemu(QMainWindow):
             elif sys_os == "Darwin":
                 cmd.extend(["-accel", "hvf"])
 
-        # Використовуємо стабільний порт для сесії
         cmd.extend(["-qmp", f"tcp:127.0.0.1:{self.qmp_port},server,nowait"])
-
         cmd.extend(["-m", str(self.f_ram.value())])
         cmd.extend(["-smp", str(self.f_smp.value())])
         cmd.extend(["-M", self.f_machine.currentText()])
@@ -250,18 +244,19 @@ class MguiQemu(QMainWindow):
 
     def run_vm(self):
         if self.process.state() == QProcess.ProcessState.Running:
-            self.process.terminate()  # Надсилає Signal 15
+            self.process.terminate()
             return
 
-        self.qmp_port = self.find_free_port()  # Новий порт при кожному запуску
+        self.qmp_port = self.find_free_port()
         args = self.generate_command_list()
 
-        # Перевірка наявності файлу
-        if not Path(args[0]).exists() and "/" in args[0]:
-            QMessageBox.critical(self, "Помилка", f"Файл QEMU не знайдено: {args[0]}")
+        # Пункт 2 і 7: Надійна перевірка через shutil.which
+        executable = shutil.which(args[0])
+        if not executable:
+            QMessageBox.critical(self, "Помилка", f"QEMU не знайдено: {args[0]}\nПеревірте шлях у вкладці 'Експерт'.")
             return
 
-        self.process.setProgram(args[0])
+        self.process.setProgram(executable)
         self.process.setArguments(args[1:])
         self.process.start()
 
@@ -279,8 +274,6 @@ class MguiQemu(QMainWindow):
 
     def read_stderr(self):
         err = self.process.readAllStandardError().data().decode()
-        if "address already in use" in err.lower():
-            QMessageBox.warning(self, "Порт зайнятий", "QMP порт зайнятий. Спробуйте ще раз.")
         print(f"QEMU LOG: {err}")
 
     def update_stats(self):
@@ -289,74 +282,90 @@ class MguiQemu(QMainWindow):
             self.ram_bar.setValue(int(psutil.virtual_memory().percent))
 
     def send_qmp_command(self, command):
+        # Пункт 3 і 6: Фіксуємо порт у замиканні для потоку
+        port = self.qmp_port
+
         def _send():
-            # РОЗУМНЕ ПІДКЛЮЧЕННЯ: 5 спроб з паузою
             for i in range(5):
                 try:
-                    time.sleep(0.5)  # Пауза, щоб QEMU встиг відкрити сокет
-                    with socket.create_connection(("127.0.0.1", self.qmp_port), timeout=1) as s:
-                        s.recv(1024)  # Привітання
+                    time.sleep(0.5)
+                    with socket.create_connection(("127.0.0.1", port), timeout=1) as s:
+                        # Пункт 10: Перевірка привітання QMP
+                        data = s.recv(1024)
+                        if b"QMP" not in data: continue
+
                         s.sendall(json.dumps({"execute": "qmp_capabilities"}).encode())
                         s.recv(1024)
                         s.sendall(json.dumps(command).encode())
-                        print(f"QMP: Команда {command['execute']} надіслана.")
+                        print(f"QMP: {command['execute']} надіслана успішно.")
                         return
-                except ConnectionRefusedError:
-                    print(f"QMP: Спроба {i + 1} не вдалася (очікування сокета...)")
                 except Exception as e:
-                    print(f"QMP Error: {e}")
-                    break
+                    print(f"QMP Retry {i + 1}: {e}")
 
         if self.process.state() == QProcess.ProcessState.Running:
             threading.Thread(target=_send, daemon=True).start()
-        else:
-            print("QMP: Неможливо надіслати команду, ВМ не запущена.")
-
-    # ... (решта методів save_vm, load_vm, refresh_list, find_free_port без змін) ...
-
-    @staticmethod
-    def find_free_port():
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(('127.0.0.1', 0))
-            return s.getsockname()[1]
 
     def save_vm(self):
-        name = self.f_name.text() or "unnamed_vm"
+        name = self.f_name.text().strip() or "unnamed_vm"
         p = self.base_path / name
-        p.mkdir(exist_ok=True)
-        data = {
-            "name": name, "arch": self.f_arch.currentText(),
-            "ram": self.f_ram.value(), "disk": self.f_disk.text(),
-            "cpu": self.f_cpu.currentText(), "smp": self.f_smp.value(),
-            "qemu_path": self.f_qemu_path.text()
-        }
-        with open(p / "config.json", "w", encoding='utf-8') as f:
-            json.dump(data, f, indent=4)
-        self.refresh_list()
-        QMessageBox.information(self, "Успіх", "Конфігурацію збережено!")
+        try:
+            p.mkdir(exist_ok=True)
+            # Пункт 4, 5, 12: Зберігаємо ПОВНУ конфігурацію
+            data = {
+                "name": name, "arch": self.f_arch.currentText(),
+                "ram": self.f_ram.value(), "smp": self.f_smp.value(),
+                "boot": self.f_boot.currentText(), "disk": self.f_disk.text(),
+                "cpu": self.f_cpu.currentText(), "machine": self.f_machine.currentText(),
+                "qemu_path": self.f_qemu_path.text(), "extra": self.f_extra.toPlainText()
+            }
+            with open(p / "config.json", "w", encoding='utf-8') as f:
+                json.dump(data, f, indent=4)
+            self.refresh_list()
+            QMessageBox.information(self, "Успіх", "Конфігурацію збережено!")
+        except Exception as e:
+            QMessageBox.critical(self, "Помилка", f"Не вдалося зберегти: {e}")
 
     def load_vm(self, name):
         p = self.base_path / name / "config.json"
-        if p.exists():
+        if not p.exists(): return
+        try:
             with open(p, "r", encoding='utf-8') as f:
                 d = json.load(f)
-                self.f_name.setText(d.get("name", ""))
-                self.f_disk.setText(d.get("disk", ""))
-                self.f_ram.setValue(d.get("ram", 2048))
-                self.f_cpu.setCurrentText(d.get("cpu", "qemu64"))
+                # Пункт 4: Встановлюємо ВСІ значення полів
+                self.f_name.setText(d.get("name", name))
                 self.f_arch.setCurrentText(d.get("arch", "x86_64"))
+                self.f_ram.setValue(d.get("ram", 2048))
+                self.f_smp.setValue(d.get("smp", 2))
+                self.f_boot.setCurrentText(d.get("boot", "Disk (c)"))
+                self.f_disk.setText(d.get("disk", ""))
+                self.f_cpu.setCurrentText(d.get("cpu", "host"))
+                self.f_machine.setCurrentText(d.get("machine", "q35"))
                 self.f_qemu_path.setText(d.get("qemu_path", ""))
+                self.f_extra.setPlainText(d.get("extra", ""))
+        except Exception as e:
+            print(f"Помилка завантаження: {e}")
         self.update_preview()
 
     def refresh_list(self):
         self.vm_list.clear()
         if self.base_path.exists():
             for d in self.base_path.iterdir():
-                if d.is_dir(): self.vm_list.addItem(d.name)
+                # Пункт 11: Додаємо лише папки, де є config.json
+                if d.is_dir() and (d / "config.json").exists():
+                    self.vm_list.addItem(d.name)
 
     def select_file(self, line_edit):
         file_path, _ = QFileDialog.getOpenFileName(self, "Виберіть файл")
         if file_path: line_edit.setText(file_path)
+
+    @staticmethod
+    def find_free_port():
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('127.0.0.1', 0))
+                return s.getsockname()[1]
+        except:
+            return 4444
 
 
 if __name__ == "__main__":
