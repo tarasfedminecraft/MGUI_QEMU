@@ -17,13 +17,13 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact_name: MGUI_QEMU_Windows
+            artifact_name: Windows
             data_sep: ';'
           - os: ubuntu-latest
-            artifact_name: MGUI_QEMU_Ubuntu
+            artifact_name: Ubuntu
             data_sep: ':'
           - os: macos-latest
-            artifact_name: MGUI_QEMU_MacOS
+            artifact_name: MacOS
             data_sep: ':'
     steps:
       - uses: actions/checkout@v4
@@ -39,21 +39,19 @@ jobs:
         shell: bash
         run: |
           cd dist
+          PLATFORM_NAME="MGUI_QEMU_${{ matrix.artifact_name }}"
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            # Використовуємо PowerShell для Windows, бо там немає команди zip у bash-сесії
-            powershell -Command "Compress-Archive -Path MGUI_QEMU.exe -DestinationPath MGUI_QEMU.zip -Force"
-            # Створюємо tar.gz за допомогою вбудованого в Windows tar
-            tar -czf MGUI_QEMU.tar.gz MGUI_QEMU.exe
+            powershell -Command "Compress-Archive -Path MGUI_QEMU.exe -DestinationPath ${PLATFORM_NAME}.zip -Force"
+            tar -czf ${PLATFORM_NAME}.tar.gz MGUI_QEMU.exe
           else
-            # Для Linux та MacOS використовуємо стандартні chmod та zip
             chmod +x MGUI_QEMU || true
-            tar -czf MGUI_QEMU.tar.gz MGUI_QEMU
-            zip MGUI_QEMU.zip MGUI_QEMU
+            tar -czf ${PLATFORM_NAME}.tar.gz MGUI_QEMU
+            zip ${PLATFORM_NAME}.zip MGUI_QEMU
           fi
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: dist/MGUI_QEMU.*
+          name: MGUI_QEMU_${{ matrix.artifact_name }}
+          path: dist/MGUI_QEMU_*.*
 
   # 2. Специфічні Linux (Arch та Fedora)
   build-linux-distros:
@@ -65,10 +63,8 @@ jobs:
         include:
           - distro: archlinux
             image: archlinux:latest
-            artifact_name: MGUI_QEMU_Arch
           - distro: fedora
             image: fedora:latest
-            artifact_name: MGUI_QEMU_Fedora
     container:
       image: ${{ matrix.image }}
     steps:
@@ -91,13 +87,14 @@ jobs:
         shell: bash
         run: |
           cd dist
+          PLATFORM_NAME="MGUI_QEMU_${{ matrix.distro }}"
           chmod +x MGUI_QEMU || true
-          zip MGUI_QEMU.zip MGUI_QEMU
-          tar -czf MGUI_QEMU.tar.gz MGUI_QEMU
+          zip ${PLATFORM_NAME}.zip MGUI_QEMU
+          tar -czf ${PLATFORM_NAME}.tar.gz MGUI_QEMU
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: dist/MGUI_QEMU.*
+          name: MGUI_QEMU_${{ matrix.distro }}
+          path: dist/MGUI_QEMU_*.*
 
   # 3. Автоматичний Реліз на КОЖЕН ПУШ
   publish-release:
