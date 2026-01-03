@@ -1,64 +1,170 @@
-***README НЕ ОНОВЛЮЄТЬСЯ***
+![banner2-direct](https://github.com/user-attachments/assets/c84d58b4-4641-4366-a2ae-f8e67d1d4290)
+
+**Professional GUI for launching and managing QEMU virtual machines**
+
+A lightweight, friendly desktop GUI written in Python (PySide6) for composing and launching QEMU instances. It focuses on an intuitive visual interface to build QEMU command lines, save VM profiles, control running VMs via QMP, and monitor basic host stats. This project is released under **GPL-2.0**.
 
 ---
 
-# 🚀 MGUI_QEMU: Твій зручний місток до віртуалізації
+## Key features ✨
 
-Привіт! 👋 Ми знаємо, що робота з QEMU через термінал іноді нагадує розшифровку стародавніх сувоїв. Саме тому ми створили **MGUI_QEMU** — графічний інтерфейс, який робить керування віртуальними машинами простим, наочним і сучасним.
-
-Це не просто "оболонка", а повноцінний пульт керування, написаний на **Python** та **PySide6**, який підходить як для новачків, так і для тих, хто любить "колупатися під капотом".
-
----
-
-### 🔥 Основні фішки (Стабільний реліз v1.0)
-
-* **⚡ Повне керування "залізом":** Виставляй RAM, кількість ядер CPU та тип архітектури (q35/pc) в пару кліків.
-* **💾 Гнучка робота з дисками:** Підтримка `.qcow2`, ISO-образів та швидке створення нових дисків прямо з програми.
-* **🖥️ Графіка та Дисплей:** Вибирай відеоадаптер (virtio, qxl) та режим виводу (GTK, SDL) без запам'ятовування прапорців.
-* **🌐 Мережа:** Швидке налаштування мережевих карт (virtio-net-pci, e1000).
-* **🕹️ QMP Control (Live):** Керуй машиною в реальному часі — кнопки **Пауза**, **Пуск** та **Вимкнення** працюють через нативний протокол QEMU.
-* **🛠️ Експертний режим:** Якщо тобі мало наших кнопок — вкладка "Експерт" дозволяє додавати будь-які кастомні аргументи QEMU.
-* **📦 Кросплатформність:** Ми налаштували автоматичну збірку для **Windows, Ubuntu, MacOS**, а також окремо для **Arch Linux** та **Fedora**! 🐧🪟🍎
+* Graphical form for typical VM settings: architecture, machine type, CPU, RAM, SMP.
+* Choose disk image or ISO and boot order.
+* Auto-generated QEMU command preview (read-only) so you always know what runs.
+* Start / stop / QMP controls (pause, continue, system_powerdown) for running VMs.
+* Save and load VM profiles as `config.json` in a `MGUI_QEMU_VMs` folder.
+* Optional psutil integration for live CPU/RAM percentage in the sidebar.
+* Cross-platform awareness (attempts to auto-detect QEMU binary on common paths).
 
 ---
 
-### 📦 Як запустити?
+## Quick demo (what it does) 🎯
 
-Ми подбали про те, щоб тобі не довелося встановлювати Python та бібліотеки. Просто зайди в розділ **Releases** (або Artifacts в Actions) і завантаж версію під свою ОС:
-
-1. **Windows:** Запускай `MGUI_QEMU.exe`.
-2. **Linux (Ubuntu/Arch/Fedora):** Завантаж бінарник, дай йому права на виконання (`chmod +x`) і запускай.
-3. **MacOS:** Нативний файл додатка готовий до роботи.
-
----
-
-### 🛠️ Технологічний стек
-
-* **Мова:** Python 3.10+
-* **Інтерфейс:** PySide6 (Qt for Python)
-* **Автоматизація:** GitHub Actions (Matrix Build + Docker)
-* **Збірка:** PyInstaller
+1. Fill the fields on the Hardware tab: name, arch, machine, CPU mode, RAM, SMP.
+2. Select a disk or ISO on the Disks tab and choose the boot device.
+3. Optionally tweak the QEMU binary path and extra args on the Expert tab.
+4. Save the configuration or hit **Launch** to run QEMU with the generated command.
+5. Use the sidebar controls to pause/continue or issue a graceful powerdown via QMP.
 
 ---
 
-### 🧩 Подяка
+## Requirements
 
-Додаток створено з душею. Окреме дякую за підтримку та вклад у розвиток проекту! Ви можете знайти посилання на наші ресурси безпосередньо у вкладці **"🎉 Подяка"** всередині самої програми.
+* Python 3.9+ (3.11 recommended)
+* [PySide6] for the GUI: `pip install PySide6`
+* Optional: `psutil` for CPU/RAM stats: `pip install psutil`
+* QEMU installed on the system and available in PATH, or set the full path in the Expert tab.
 
----
-
-### ⚠️ Поточний стан та відомі баги
-
-Програма знаходиться у стані стабільного релізу, але, як кажуть, *"немає коду без багів"*:
-
-* **Логи QEMU:** Наразі, якщо машина не стартує через помилку в "Експертних" налаштуваннях, програма не завжди виводить причину в GUI (треба дивитися в термінал).
-* **Шляхи на MacOS:** Іноді виникають питання з правами доступу до ISO-файлів у закритих папках системи.
-* **QMP Порт:** Поки що порт `4444` зафіксований жорстко. Якщо він зайнятий іншою програмою, кнопки керування не спрацюють.
-
-**Ми про це знаємо і вже працюємо над виправленнями у майбутніх оновленнях! 🛠️**
+> Tested on Linux, Windows, macOS. Behavior of accelerators differs per OS (KVM/WHv/WHPX/HVF).
 
 ---
 
-> **MGUI_QEMU** — Створено для тих, хто цінує свій час і комфорт у світі віртуалізації. ✨
+## Installation
+
+Clone the repo and install dependencies:
+
+```bash
+git clone <your-repo-url>
+cd mgui_qemu
+python -m venv .venv
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+pip install -r requirements.txt
+```
+
+If you don't have a `requirements.txt`, at minimum install:
+
+```bash
+pip install PySide6
+# optional
+pip install psutil
+```
 
 ---
+
+## Run
+
+```bash
+python main.py
+```
+
+The window uses the Fusion style by default to keep the UI consistent across platforms.
+
+---
+
+## Command generation details
+
+The GUI generates a QEMU command from the form and extra args. Example generated command:
+
+```bash
+qemu-system-x86_64 -enable-kvm -qmp tcp:127.0.0.1:4444,server,nowait -m 2048 -smp 2 -M q35 -cpu host -drive file=/path/to/disk.img,if=virtio -boot c
+```
+
+Notes:
+
+* If an ISO is selected the GUI uses `-cdrom` instead of `-drive`.
+* The `-qmp` socket is created on `127.0.0.1:<port>`; the GUI will pick a free port when launching.
+* CPU acceleration flags are added automatically: `-enable-kvm` on Linux, `-accel whpx` on Windows, `-accel hvf` on macOS when `cpu=host` is selected.
+* Extra advanced arguments may be provided in the Expert tab; they are split with `shlex.split`.
+
+---
+
+## VM profile (`config.json`) format
+
+Saved VM profiles live under `~/MGUI_QEMU_VMs/<vm-name>/config.json` and look like this:
+
+```json
+{
+    "name": "myvm",
+    "arch": "x86_64",
+    "ram": 2048,
+    "smp": 2,
+    "boot": "Disk (c)",
+    "disk": "/path/to/image.qcow2",
+    "cpu": "host",
+    "machine": "q35",
+    "qemu_path": "",
+    "extra": "-device usb-ehci"
+}
+```
+
+---
+
+## QMP integration
+
+* The GUI starts QEMU with a QMP TCP server on `127.0.0.1:<port>` and attempts to send QMP JSON commands after negotiating `qmp_capabilities`.
+* Available quick controls in the sidebar: Pause (`stop`), Continue (`cont`), Powerdown (`system_powerdown`).
+* QMP commands are sent from a background thread with retry logic.
+
+Security note: The QMP interface is bound to localhost only. Do not expose the QMP TCP port to untrusted networks.
+
+---
+
+## Troubleshooting & common pitfalls 🩺
+
+* **QEMU not found**: If the GUI cannot resolve the QEMU binary, set the full path in the Expert tab or ensure the binary (e.g. `qemu-system-x86_64`) is in PATH.
+* **KVM/acceleration issues**: On Linux, ensure `/dev/kvm` exists and your user has permissions (you may need to be in the `kvm` group). On macOS use HVF; on Windows use WHPX/Hyper-V.
+* **Port collisions**: The GUI attempts to pick a free port for QMP; if you use a fixed port in other tools, collisions may happen.
+* **Missing psutil**: CPU/RAM bars are disabled if `psutil` is not installed. This is optional.
+* **Malformed `extra` args**: The Expert tab uses `shlex.split` — unbalanced quotes will raise errors when generating the preview.
+
+---
+
+## Development & testing 🛠
+
+* Project entrypoint: `main.py` (or whichever file contains the `if __name__ == "__main__"` block).
+* Linting: run `flake8` / `ruff` if you want to keep things tidy.
+* Packaging: build a single-file binary with `pyinstaller` or create platform-specific installers for end users.
+
+Recommended dev tasks you can pick up:
+
+* Add unit tests for command generation and config read/write.
+* Add desktop integration (start menu / dock icons) for installers.
+* Add support for passing a `--headless` or `--dry-run` flag for CI tests.
+
+---
+
+## Contributing 🤝
+
+Contributions are welcome. This repository follows a standard workflow:
+
+1. Fork the repo
+2. Create a feature branch
+3. Open a PR with a clear description and tests if possible
+
+Keep changes small and focused. If you add new features, update the README and include examples.
+
+---
+
+## License
+
+This project is licensed under the **GPL-2.0** license. Include the full `COPYING`/`LICENSE` file in the repository.
+
+---
+
+## Acknowledgements
+
+Built with PySide6 and a healthy disdain for command-line copy/paste. Thanks to anyone who takes the time to make virtualization less miserable.
+
+---
+
+*Made for people who want a sane UI for QEMU. Enjoy, and try not to break anything important.*

@@ -2,9 +2,9 @@
 
 ## Supported Versions
 
-Ми не підтримуємо старі версії окремо. Безпекові оновлення та виправлення помилок надаються виключно для **останньої стабільної версії** (latest release) проекту.
+We do not provide support for older versions. Security updates and bug fixes are provided exclusively for the **latest stable release** of the project.
 
-Якщо ви використовуєте застарілу версію, будь ласка, оновіться до останнього білду, створеного `github-actions[bot]`, щоб отримати всі актуальні патчі.
+If you are using an outdated version, please update to the most recent build created by `github-actions[bot]` to ensure you have all current patches and improvements.
 
 | Version | Supported |
 | --- | --- |
