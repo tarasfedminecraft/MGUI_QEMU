@@ -48,7 +48,7 @@ jobs:
             tar -czf ${PLATFORM_NAME}.tar.gz MGUI_QEMU
             zip ${PLATFORM_NAME}.zip MGUI_QEMU
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: MGUI_QEMU_${{ matrix.artifact_name }}
           path: dist/MGUI_QEMU_*.*
@@ -91,7 +91,7 @@ jobs:
           chmod +x MGUI_QEMU || true
           zip ${PLATFORM_NAME}.zip MGUI_QEMU
           tar -czf ${PLATFORM_NAME}.tar.gz MGUI_QEMU
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: MGUI_QEMU_${{ matrix.distro }}
           path: dist/MGUI_QEMU_*.*
