@@ -2,7 +2,7 @@ name: Build MGUI_QEMU Multi-Platform
 
 on:
   push:
-    branches: [ main ] # Працює на кожному коміті в main
+    branches: [ main ] # Реліз створюється на кожен коміт у main
 
 permissions:
   contents: write
@@ -39,10 +39,13 @@ jobs:
         shell: bash
         run: |
           cd dist
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            # Використовуємо PowerShell для Windows, бо там немає команди zip у bash-сесії
+            powershell -Command "Compress-Archive -Path MGUI_QEMU.exe -DestinationPath MGUI_QEMU.zip -Force"
+            # Створюємо tar.gz за допомогою вбудованого в Windows tar
             tar -czf MGUI_QEMU.tar.gz MGUI_QEMU.exe
-            zip MGUI_QEMU.zip MGUI_QEMU.exe
           else
+            # Для Linux та MacOS використовуємо стандартні chmod та zip
             chmod +x MGUI_QEMU || true
             tar -czf MGUI_QEMU.tar.gz MGUI_QEMU
             zip MGUI_QEMU.zip MGUI_QEMU
@@ -85,6 +88,7 @@ jobs:
           pyinstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
           --add-data="icon.txt:." main.py
       - name: Package
+        shell: bash
         run: |
           cd dist
           chmod +x MGUI_QEMU || true
@@ -104,15 +108,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Set Release Name
         run: echo "REL_TAG=Release-$(date +'%Y.%m.%d-%H%M%S')-${GITHUB_SHA::7}" >> $GITHUB_ENV
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: ./artifacts
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
