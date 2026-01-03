@@ -1,37 +1,98 @@
-name: Build MGUI_QEMU for Windows
+name: Build MGUI_QEMU Multi-Platform
 
-on: 
+on:
   push:
-    branches: [ main ] # Збирати тільки при пуші в основну гілку (опціонально)
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
 jobs:
-  build:
-    runs-on: windows-latest
-    
+  # Основна збірка: Windows, Ubuntu, MacOS
+  build-main:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: MGUI_QEMU_Windows
+            executable_path: dist/MGUI_QEMU.exe
+            data_sep: ';'
+          - os: ubuntu-latest
+            artifact_name: MGUI_QEMU_Ubuntu
+            executable_path: dist/MGUI_QEMU
+            data_sep: ':'
+          - os: macos-latest
+            artifact_name: MGUI_QEMU_MacOS
+            executable_path: dist/MGUI_QEMU # MacOS краще теж одним файлом для Artifacts
+            data_sep: ':'
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 # Оновив до v4 (найновіша)
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5 # Оновив до v5
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip' # Використовуємо вбудований кеш
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          pip install --upgrade pip
           pip install PySide6 psutil pyinstaller
+
+      - name: Build with PyInstaller
+        env:
+          ADD_DATA: "icon.txt${{ matrix.data_sep }}."
+        run: |
+          pyinstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" --add-data "${ADD_DATA}" main.py
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.executable_path }}
+
+  # Спеціальна збірка для Arch та Fedora (через Docker)
+  build-linux-distros:
+    name: Build for ${{ matrix.distro }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - distro: archlinux
+            image: archlinux:latest
+            artifact_name: MGUI_QEMU_Arch
+          - distro: fedora
+            image: fedora:latest
+            artifact_name: MGUI_QEMU_Fedora
+    container:
+      image: ${{ matrix.image }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          if [ "${{ matrix.distro }}" = "archlinux" ]; then
+            pacman -Syu --noconfirm python python-pip qt6-base base-devel
+          else
+            dnf install -y python3 python3-pip qt6-qtbase-devel gcc
+          fi
 
       - name: Build EXE
         run: |
-          # Додаємо --add-data, щоб іконка підтягнулася всередину EXE
-          # На Windows у PyInstaller розділювач - крапка з комою (;)
-          pyinstaller --noconfirm --onefile --windowed --name "MGUI_QEMU" --add-data "icon.txt;." main.py
+          python3 -m pip install --upgrade pip
+          pip install PySide6 psutil pyinstaller
+          pyinstaller --onefile --windowed --name "MGUI_QEMU" --add-data "icon.txt:." main.py
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4 # Оновив до v4
+        uses: actions/upload-artifact@v4
         with:
-          name: MGUI_QEMU_Windows_Build
-          path: dist/MGUI_QEMU.exe
+          name: ${{ matrix.artifact_name }}
+          path: dist/MGUI_QEMU
