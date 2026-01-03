@@ -7,6 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
+  # 1. Збірка для стандартних Windows, Ubuntu та MacOS
   build-main:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -30,21 +31,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-          cache: 'pip'
+        run: uv python install 3.12
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install PySide6 psutil pyinstaller
+        run: uv sync --frozen
 
       - name: Build with PyInstaller
+        shell: bash
         run: |
-          # Передаємо аргумент через знак = та лапки для уникнення помилок синтаксису
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
+          uv run pyinstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
           --add-data="icon.txt${{ matrix.data_sep }}." main.py
 
       - name: Upload Artifact
@@ -53,6 +52,7 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.executable_path }}
 
+  # 2. Збірка для специфічних Linux дистрибутивів (Arch, Fedora, Gentoo)
   build-linux-distros:
     name: Build for ${{ matrix.distro }}
     runs-on: ubuntu-latest
@@ -66,6 +66,9 @@ jobs:
           - distro: fedora
             image: fedora:latest
             artifact_name: MGUI_QEMU_Fedora
+          - distro: gentoo
+            image: gentoo/stage3:latest
+            artifact_name: MGUI_QEMU_Gentoo
     container:
       image: ${{ matrix.image }}
     steps:
@@ -73,19 +76,26 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install System Dependencies
+        shell: bash
         run: |
           if [ "${{ matrix.distro }}" = "archlinux" ]; then
             pacman -Syu --noconfirm python python-pip qt6-base base-devel binutils
-          else
+          elif [ "${{ matrix.distro }}" = "fedora" ]; then
             dnf install -y python3 python3-pip qt6-qtbase-devel gcc binutils
+          elif [ "${{ matrix.distro }}" = "gentoo" ]; then
+            emerge-webrsync
+            emerge --usepkg --binpkg-changed-deps=y dev-lang/python dev-python/pip dev-qt/qtbase sys-devel/gcc sys-devel/binutils
           fi
 
-      - name: Build EXE (Linux Native)
+      - name: Install uv inside container
         run: |
-          python3 -m pip install --upgrade pip --break-system-packages
-          python3 -m pip install PySide6 psutil pyinstaller --break-system-packages
-          # Використовуємо чіткий синтаксис --add-data="..."
-          python3 -m PyInstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
+          python3 -m pip install uv --break-system-packages
+
+      - name: Build with PyInstaller
+        shell: bash
+        run: |
+          uv run --with pyinstaller --with PySide6 --with psutil \
+          pyinstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
           --add-data="icon.txt:." main.py
 
       - name: Upload Artifact
