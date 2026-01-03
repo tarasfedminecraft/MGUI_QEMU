@@ -42,10 +42,10 @@ jobs:
           python -m pip install PySide6 psutil pyinstaller
 
       - name: Build with PyInstaller
-        env:
-          ADD_DATA: "icon.txt${{ matrix.data_sep }}."
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" --add-data "${ADD_DATA}" main.py
+          # Передаємо аргумент через знак = та лапки для уникнення помилок синтаксису
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
+          --add-data="icon.txt${{ matrix.data_sep }}." main.py
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -84,7 +84,9 @@ jobs:
         run: |
           python3 -m pip install --upgrade pip --break-system-packages
           python3 -m pip install PySide6 psutil pyinstaller --break-system-packages
-          python3 -m PyInstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" --add-data "icon.txt:." main.py
+          # Використовуємо чіткий синтаксис --add-data="..."
+          python3 -m PyInstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
+          --add-data="icon.txt:." main.py
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
