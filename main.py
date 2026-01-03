@@ -4,13 +4,14 @@ import json
 import shlex
 import socket
 import threading
+import platform  # Додано для визначення ОС
 from pathlib import Path
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QHBoxLayout, QLineEdit, QPushButton, QLabel,
                                QFileDialog, QSpinBox, QListWidget, QMessageBox,
                                QPlainTextEdit, QTabWidget, QComboBox,
                                QProgressBar, QFormLayout)
-from PySide6.QtCore import QProcess, QTimer
+from PySide6.QtCore import QProcess, QTimer, Qt
 from PySide6.QtGui import QPalette
 
 try:
@@ -20,91 +21,39 @@ except ImportError:
 
 
 class MguiQemu(QMainWindow):
-    # explicit attribute annotations help static checkers resolve Signals and widget methods
-    vm_list: QListWidget
-    status_label: QLabel
-    cpu_bar: QProgressBar
-    ram_bar: QProgressBar
-    btn_run: QPushButton
-    tabs: QTabWidget
-    cmd_preview: QPlainTextEdit
-    f_name: QLineEdit
-    f_arch: QComboBox
-    f_machine: QComboBox
-    f_cpu: QComboBox
-    f_ram: QSpinBox
-    f_smp: QSpinBox
-    f_disk: QLineEdit
-    f_boot: QComboBox
-    conv_src: QLineEdit
-    conv_fmt: QComboBox
-    f_extra: QPlainTextEdit
-    is_dark: bool
-    qmp_port: int
-    process: QProcess
-
     def __init__(self):
         super().__init__()
-
-        # Initialize all UI attributes with correct widget types
-        self.is_dark = False
-        self.vm_list = QListWidget()
-        self.status_label = QLabel()
-        self.cpu_bar = QProgressBar()
-        self.ram_bar = QProgressBar()
-        self.btn_run = QPushButton()
-        self.tabs = QTabWidget()
-        self.cmd_preview = QPlainTextEdit()
-        self.f_name = QLineEdit()
-        self.f_arch = QComboBox()
-        self.f_machine = QComboBox()
-        self.f_cpu = QComboBox()
-        self.f_ram = QSpinBox()
-        self.f_smp = QSpinBox()
-        self.f_disk = QLineEdit()
-        self.f_boot = QComboBox()
-        self.conv_src = QLineEdit()
-        self.conv_fmt = QComboBox()
-        self.f_extra = QPlainTextEdit()
-
         self.setWindowTitle("MGUI_QEMU - Professional Virtualization Control")
         self.setMinimumSize(1200, 900)
 
-        # get palette safely and avoid shadowing the module-level 'app' name
-        self.apply_system_theme()
-
-        self.arch_map = {
-            "x86_64": "x86_64", "i386": "i386", "Arm (64-bit)": "aarch64",
-            "Arm (32-bit)": "arm", "RISC-V (64-bit)": "riscv64", "RISC-V (32-bit)": "riscv32",
-            "PowerPC": "ppc", "PowerPC 64": "ppc64", "MIPS": "mips", "MIPS 64": "mips64",
-            "LoongArch": "loongarch64", "SPARC": "sparc", "SPARC 64": "sparc64",
-            "Alpha": "alpha", "AVR": "avr", "m68k": "m68k", "PA-RISC": "hppa",
-            "s390x": "s390x", "SH4": "sh4", "OpenRISC": "or1k", "Xtensa": "xtensa"
-        }
-
+        # Ініціалізація змінних
         self.qmp_port = 4444
         self.base_path = Path.home() / "MGUI_QEMU_VMs"
         self.base_path.mkdir(exist_ok=True)
-
         self.process = QProcess()
-        self.process.started.connect(self.update_status_ui)  # type: ignore
-        self.process.finished.connect(self.update_status_ui)  # type: ignore
-        self.process.readyReadStandardError.connect(self.read_stderr)  # type: ignore
+
+        # Словник архітектур
+        self.arch_map = {
+            "x86_64": "x86_64", "i386": "i386", "Arm (64-bit)": "aarch64",
+            "Arm (32-bit)": "arm", "RISC-V (64-bit)": "riscv64", "RISC-V (32-bit)": "riscv32"
+        }
 
         self.init_ui()
+        self.apply_system_theme()
 
+        # Сигнали процесу
+        self.process.started.connect(self.update_status_ui)
+        self.process.finished.connect(self.update_status_ui)
+        self.process.readyReadStandardError.connect(self.read_stderr)
+
+        # Таймер статистики
         self.stats_timer = QTimer()
-        self.stats_timer.timeout.connect(self.update_stats)  # type: ignore
+        self.stats_timer.timeout.connect(self.update_stats)
         self.stats_timer.start(2000)
 
     def apply_system_theme(self):
-        # be explicit about the application type so type checkers know palette() is available
         qapp = QApplication.instance()
-        if not isinstance(qapp, QApplication):
-            self.is_dark = False
-            return
         palette = qapp.palette()
-        # use ColorRole enum variant to avoid unresolved attribute complaints
         bg_color = palette.color(QPalette.ColorRole.Window).lightness()
         self.is_dark = bg_color < 128
 
@@ -113,9 +62,10 @@ class MguiQemu(QMainWindow):
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
 
+        # --- Ліва панель (Sidebar) ---
         sidebar = QVBoxLayout()
         self.vm_list = QListWidget()
-        self.vm_list.currentTextChanged.connect(self.load_vm)  # type: ignore
+        self.vm_list.currentTextChanged.connect(self.load_vm)
 
         self.status_label = QLabel("● Стан: Очікування")
         self.status_label.setStyleSheet("font-weight: bold; color: gray;")
@@ -134,156 +84,125 @@ class MguiQemu(QMainWindow):
         qmp_group = QHBoxLayout()
         for icon, cmd in [("⏸", "stop"), ("▶", "cont"), ("🛑", "system_powerdown")]:
             btn = QPushButton(icon)
-            btn.clicked.connect(lambda chk=False, c=cmd: self.send_qmp_command({"execute": c}))  # type: ignore
+            btn.clicked.connect(lambda chk=False, c=cmd: self.send_qmp_command({"execute": c}))
             qmp_group.addWidget(btn)
         sidebar.addLayout(qmp_group)
 
         self.btn_run = QPushButton("🚀 ЗАПУСТИТИ")
         self.btn_run.setFixedHeight(50)
-        self.btn_run.setStyleSheet("background: #1a4a7a; color: white; font-weight: bold;")
-        self.btn_run.clicked.connect(self.run_vm)  # type: ignore
+        self.btn_run.setStyleSheet("background: #1a4a7a; color: white; font-weight: bold; border-radius: 5px;")
+        self.btn_run.clicked.connect(self.run_vm)
         sidebar.addWidget(self.btn_run)
 
         main_layout.addLayout(sidebar, 1)
 
+        # --- Права панель (Tabs) ---
         right_layout = QVBoxLayout()
         self.tabs = QTabWidget()
 
-        self.init_basic_tab()
-        self.init_storage_tab()
-        self.init_tools_tab()
-        self.init_expert_tab()
-
-        right_layout.addWidget(self.tabs)
-
-        self.cmd_preview = QPlainTextEdit()
-        self.cmd_preview.setReadOnly(True)
-        self.cmd_preview.setFixedHeight(60)
-        self.cmd_preview.setStyleSheet("background: black; color: #0f0; font-family: monospace;")
-
-        right_layout.addWidget(QLabel("🛠 Команда:"))
-        right_layout.addWidget(self.cmd_preview)
-
-        btn_save = QPushButton("💾 Зберегти конфігурацію")
-        btn_save.clicked.connect(self.save_vm)  # type: ignore
-        right_layout.addWidget(btn_save)
-
-        main_layout.addLayout(right_layout, 3)
-        self.refresh_list()
-
-    def init_basic_tab(self):
-        tab = QWidget()
-        l = QFormLayout(tab)
+        # Вкладка Залізо
+        self.tab_hw = QWidget()
+        hw_l = QFormLayout(self.tab_hw)
         self.f_name = QLineEdit()
         self.f_arch = QComboBox()
         self.f_arch.addItems(list(self.arch_map.keys()))
         self.f_machine = QComboBox()
-        self.f_machine.addItems(["q35", "pc", "virt", "mac99"])
+        self.f_machine.addItems(["q35", "pc", "virt"])
         self.f_cpu = QComboBox()
-        self.f_cpu.addItems(["host", "max", "qemu64", "cortex-a57"])
+        self.f_cpu.addItems(["host", "max", "qemu64"])
         self.f_ram = QSpinBox()
-        self.f_ram.setRange(128, 256000)
+        self.f_ram.setRange(128, 64000)
         self.f_ram.setValue(2048)
         self.f_smp = QSpinBox()
-        self.f_smp.setRange(1, 64)
+        self.f_smp.setRange(1, 32)
         self.f_smp.setValue(2)
+        hw_l.addRow("Назва:", self.f_name)
+        hw_l.addRow("Архітектура:", self.f_arch)
+        hw_l.addRow("Машина:", self.f_machine)
+        hw_l.addRow("Процесор:", self.f_cpu)
+        hw_l.addRow("RAM (MB):", self.f_ram)
+        hw_l.addRow("Ядра (SMP):", self.f_smp)
+        self.tabs.addTab(self.tab_hw, "Залізо")
 
-        l.addRow("Назва:", self.f_name)
-        l.addRow("Архітектура:", self.f_arch)
-        l.addRow("Машина:", self.f_machine)
-        l.addRow("Процесор:", self.f_cpu)
-        l.addRow("RAM (MB):", self.f_ram)
-        l.addRow("Ядра:", self.f_smp)
-
-        self.tabs.addTab(tab, "Залізо")
-        for w in [self.f_name, self.f_arch, self.f_ram, self.f_smp]:
-            if hasattr(w, "textChanged"):
-                w.textChanged.connect(self.update_preview)  # type: ignore
-            if hasattr(w, "currentIndexChanged"):
-                w.currentIndexChanged.connect(self.update_preview)  # type: ignore
-            if hasattr(w, "valueChanged"):
-                w.valueChanged.connect(self.update_preview)  # type: ignore
-
-    def init_storage_tab(self):
-        tab = QWidget()
-        l = QVBoxLayout(tab)
-
-        h = QHBoxLayout()
+        # Вкладка Диски
+        self.tab_disk = QWidget()
+        disk_l = QVBoxLayout(self.tab_disk)
+        h_disk = QHBoxLayout()
         self.f_disk = QLineEdit()
-        btn_browse = QPushButton("📁")
-        btn_browse.clicked.connect(lambda: self.select_file(self.f_disk))  # type: ignore
-        h.addWidget(self.f_disk)
-        h.addWidget(btn_browse)
-
-        l.addWidget(QLabel("Образ Диска / ISO:"))
-        l.addLayout(h)
-
+        btn_br = QPushButton("📁")
+        btn_br.clicked.connect(lambda: self.select_file(self.f_disk))
+        h_disk.addWidget(self.f_disk)
+        h_disk.addWidget(btn_br)
+        disk_l.addWidget(QLabel("Образ Диска / ISO:"))
+        disk_l.addLayout(h_disk)
         self.f_boot = QComboBox()
         self.f_boot.addItems(["Disk (c)", "CD-ROM (d)"])
-        l.addWidget(QLabel("Пріоритет завантаження:"))
-        l.addWidget(self.f_boot)
+        disk_l.addWidget(QLabel("Завантаження з:"))
+        disk_l.addWidget(self.f_boot)
+        self.tabs.addTab(self.tab_disk, "Диски")
 
-        btn_create = QPushButton("💎 Створити новий порожній диск (QCOW2)")
-        btn_create.clicked.connect(self.tool_create_disk)  # type: ignore
-        l.addWidget(btn_create)
-
-        l.addStretch()
-        self.tabs.addTab(tab, "Диски")
-
-    def init_tools_tab(self):
-        tab = QWidget()
-        l = QVBoxLayout(tab)
-
-        l.addWidget(QLabel("⚡ Конвертація образів (qemu-img):"))
-
-        self.conv_src = QLineEdit()
-        btn_src = QPushButton("Вибрати джерело")
-        btn_src.clicked.connect(lambda: self.select_file(self.conv_src))  # type: ignore
-
-        self.conv_fmt = QComboBox()
-        self.conv_fmt.addItems(["qcow2", "raw", "vmdk", "vdi", "iso"])
-
-        btn_do_conv = QPushButton("🔄 Почати конвертацію")
-        btn_do_conv.clicked.connect(self.tool_convert_disk)  # type: ignore
-
-        l.addWidget(self.conv_src)
-        l.addWidget(btn_src)
-        l.addWidget(QLabel("Цільовий формат:"))
-        l.addWidget(self.conv_fmt)
-        l.addWidget(btn_do_conv)
-        l.addStretch()
-        self.tabs.addTab(tab, "Інструменти")
-
-    def init_expert_tab(self):
-        tab = QWidget()
-        l = QVBoxLayout(tab)
+        # Вкладка Експерт
+        self.tab_ex = QWidget()
+        ex_l = QVBoxLayout(self.tab_ex)
         self.f_extra = QPlainTextEdit()
-        l.addWidget(QLabel("Додаткові прапорці:"))
-        l.addWidget(self.f_extra)
-        self.tabs.addTab(tab, "Експерт")
+        ex_l.addWidget(QLabel("Додаткові аргументи:"))
+        ex_l.addWidget(self.f_extra)
+        self.tabs.addTab(self.tab_ex, "Експерт")
 
-    @staticmethod
-    def find_free_port():
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            s.bind(('127.0.0.1', 0))
-            port = s.getsockname()[1]
-        finally:
-            s.close()
-        return port
+        right_layout.addWidget(self.tabs)
+
+        # Прев'ю команди
+        self.cmd_preview = QPlainTextEdit()
+        self.cmd_preview.setReadOnly(True)
+        self.cmd_preview.setFixedHeight(80)
+        self.cmd_preview.setStyleSheet("background: #000; color: #0f0; font-family: 'Consolas'; font-size: 11px;")
+        right_layout.addWidget(QLabel("🛠 Поточна команда:"))
+        right_layout.addWidget(self.cmd_preview)
+
+        btn_save = QPushButton("💾 Зберегти конфігурацію")
+        btn_save.clicked.connect(self.save_vm)
+        right_layout.addWidget(btn_save)
+
+        main_layout.addLayout(right_layout, 3)
+
+        # Підключення авто-оновлення прев'ю
+        for w in [self.f_arch, self.f_machine, self.f_cpu, self.f_ram, self.f_smp, self.f_boot]:
+            if isinstance(w, QComboBox):
+                w.currentIndexChanged.connect(self.update_preview)
+            else:
+                w.valueChanged.connect(self.update_preview)
+        self.f_disk.textChanged.connect(self.update_preview)
+        self.f_extra.textChanged.connect(self.update_preview)
+
+        self.refresh_list()
+        self.update_preview()
 
     def generate_command_list(self):
-        arch = self.arch_map.get(self.f_arch.currentText(), "x86_64")
+        arch_key = self.f_arch.currentText()
+        arch = self.arch_map.get(arch_key, "x86_64")
         cmd = [f"qemu-system-{arch}"]
 
+        # Автоматичне прискорення (ВИПРАВЛЕНО)
+        sys_os = platform.system()
+        if self.f_cpu.currentText() == "host":
+            if sys_os == "Linux":
+                cmd.append("-enable-kvm")
+            elif sys_os == "Windows":
+                cmd.extend(["-accel", "whpx"])
+            elif sys_os == "Darwin":
+                cmd.extend(["-accel", "hvf"])
+
+        # QMP
         self.qmp_port = self.find_free_port()
         cmd.extend(["-qmp", f"tcp:localhost:{self.qmp_port},server,nowait"])
 
+        # Ресурси
         cmd.extend(["-m", str(self.f_ram.value())])
         cmd.extend(["-smp", str(self.f_smp.value())])
         cmd.extend(["-M", self.f_machine.currentText()])
         cmd.extend(["-cpu", self.f_cpu.currentText()])
 
+        # Диски
         path = self.f_disk.text()
         if path:
             if path.lower().endswith(".iso"):
@@ -291,16 +210,32 @@ class MguiQemu(QMainWindow):
             else:
                 cmd.extend(["-drive", f"file={path},if=virtio"])
 
-        cmd.extend(["-boot", "c" if "Disk" in self.f_boot.currentText() else "d"])
+        # Завантаження
+        boot_mode = "c" if "Disk" in self.f_boot.currentText() else "d"
+        cmd.extend(["-boot", boot_mode])
 
+        # Експертні налаштування
         extra = self.f_extra.toPlainText().strip()
-        if extra:
-            cmd.extend(shlex.split(extra))
+        if extra: cmd.extend(shlex.split(extra))
 
         return cmd
 
+    @staticmethod
+    def find_free_port():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('127.0.0.1', 0))
+            return s.getsockname()[1]
+
+    def update_preview(self):
+        try:
+            full_cmd = " ".join(self.generate_command_list())
+            self.cmd_preview.setPlainText(full_cmd)
+        except Exception as e:
+            self.cmd_preview.setPlainText(f"Помилка генерації: {e}")
+
     def run_vm(self):
         if self.process.state() == QProcess.ProcessState.Running:
+            self.process.terminate()
             return
 
         args = self.generate_command_list()
@@ -308,91 +243,49 @@ class MguiQemu(QMainWindow):
         self.process.setArguments(args[1:])
         self.process.start()
 
-    def send_qmp_command(self, command):
-        def _send():
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(1.0)
-                s.connect(("127.0.0.1", self.qmp_port))
-                # initial greeting
-                try:
-                    s.recv(1024)
-                except socket.timeout:
-                    pass
-                s.sendall(json.dumps({"execute": "qmp_capabilities"}).encode())
-                try:
-                    s.recv(1024)
-                except socket.timeout:
-                    pass
-                s.sendall(json.dumps(command).encode())
-                s.close()
-            except (socket.timeout, ConnectionRefusedError, OSError) as e:
-                # log/debug only; avoid silencing all exceptions
-                print("QMP send failed:", e)
-
-        threading.Thread(target=_send, daemon=True).start()
-
-    def update_stats(self):
-        # avoid calling psutil when it's not available and narrow caught exceptions
-        if psutil and hasattr(psutil, "virtual_memory"):
-            try:
-                self.cpu_bar.setValue(int(psutil.cpu_percent()))
-                self.ram_bar.setValue(int(psutil.virtual_memory().percent))
-            except (AttributeError, OSError) as e:
-                # log minimal info for debugging
-                print("psutil stats failed:", e)
-
-    def tool_create_disk(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Зберегти диск", "", "QEMU Image (*.qcow2)")
-        if path:
-            reply = QMessageBox.question(
-                self,
-                "Розмір",
-                "Створити диск на 20ГБ?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            s_val = "20G" if reply == QMessageBox.StandardButton.Yes else "40G"
-            QProcess.execute("qemu-img", ["create", "-f", "qcow2", path, s_val])
-            self.f_disk.setText(path)
-
-    def tool_convert_disk(self):
-        src = self.conv_src.text()
-        if not src: return
-        fmt = self.conv_fmt.currentText()
-        dst = src.rsplit('.', 1)[0] + f".{fmt}"
-        QProcess.startDetached("qemu-img", ["convert", "-f", "auto", "-O", fmt, src, dst])
-        QMessageBox.information(self, "Готово", f"Конвертацію запущено.\nФайл: {dst}")
+    def update_status_ui(self):
+        is_run = self.process.state() == QProcess.ProcessState.Running
+        self.btn_run.setText("🛑 ЗУПИНИТИ" if is_run else "🚀 ЗАПУСТИТИ")
+        self.btn_run.setStyleSheet(
+            f"background: {'#9e1a1a' if is_run else '#1a4a7a'}; color: white; font-weight: bold;")
+        self.status_label.setText(f"● Стан: {'ПРАЦЮЄ' if is_run else 'Зупинено'}")
+        self.status_label.setStyleSheet(f"color: {'#00ff00' if is_run else 'gray'}; font-weight: bold;")
 
     def read_stderr(self):
         err = self.process.readAllStandardError().data().decode()
-        print(f"QEMU LOG: {err}")
+        if err: print(f"QEMU ERROR: {err}")
 
-    def update_status_ui(self):
-        running = self.process.state() == QProcess.ProcessState.Running
-        self.status_label.setText(f"● Стан: {'ПРАЦЮЄ' if running else 'Зупинено'}")
-        self.status_label.setStyleSheet(f"color: {'green' if running else 'gray'}; font-weight: bold;")
+    def update_stats(self):
+        if psutil:
+            self.cpu_bar.setValue(int(psutil.cpu_percent()))
+            self.ram_bar.setValue(int(psutil.virtual_memory().percent))
 
     def save_vm(self):
-        name = self.f_name.text() or "unnamed"
+        name = self.f_name.text() or "unnamed_vm"
         p = self.base_path / name
         p.mkdir(exist_ok=True)
         data = {
             "name": name,
             "arch": self.f_arch.currentText(),
             "ram": self.f_ram.value(),
-            "disk": self.f_disk.text()
+            "disk": self.f_disk.text(),
+            "cpu": self.f_cpu.currentText(),
+            "smp": self.f_smp.value()
         }
-        with open(p / "config.json", "w") as f:
-            json.dump(data, f)
+        with open(p / "config.json", "w", encoding='utf-8') as f:
+            json.dump(data, f, indent=4)
         self.refresh_list()
+        QMessageBox.information(self, "Успіх", "Конфігурацію збережено!")
 
     def load_vm(self, name):
         p = self.base_path / name / "config.json"
         if p.exists():
-            with open(p, "r") as f:
+            with open(p, "r", encoding='utf-8') as f:
                 d = json.load(f)
                 self.f_name.setText(d.get("name", ""))
                 self.f_disk.setText(d.get("disk", ""))
+                self.f_ram.setValue(d.get("ram", 2048))
+                self.f_cpu.setCurrentText(d.get("cpu", "qemu64"))
         self.update_preview()
 
     def refresh_list(self):
@@ -401,22 +294,23 @@ class MguiQemu(QMainWindow):
             for d in self.base_path.iterdir():
                 if d.is_dir(): self.vm_list.addItem(d.name)
 
-    def select_file(self, line):
-        f, _ = QFileDialog.getOpenFileName(self, "Виберіть файл")
-        if f:
-            line.setText(f)
-            self.update_preview()
+    def select_file(self, line_edit):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Виберіть файл")
+        if file_path:
+            line_edit.setText(file_path)
 
-    def update_preview(self):
-        # narrow exception types; preview generation rarely fails with ValueError/OSError
-        try:
-            self.cmd_preview.setPlainText(" ".join(self.generate_command_list()))
-        except (ValueError, OSError) as e:
-            print("Preview update failed:", e)
+    def send_qmp_command(self, command):
+        def _send():
+            try:
+                with socket.create_connection(("127.0.0.1", self.qmp_port), timeout=1) as s:
+                    s.recv(1024)  # Привітання
+                    s.sendall(json.dumps({"execute": "qmp_capabilities"}).encode())
+                    s.recv(1024)
+                    s.sendall(json.dumps(command).encode())
+            except Exception as e:
+                print(f"QMP Error: {e}")
 
-    def clear_fields(self):
-        self.f_name.clear()
-        self.f_disk.clear()
+        threading.Thread(target=_send, daemon=True).start()
 
 
 if __name__ == "__main__":
