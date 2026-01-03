@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  # 1. Збірка для основних ОС (Windows, Ubuntu, MacOS)
+  # 1. Основні ОС (Windows, Ubuntu, MacOS)
   build-main:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -43,7 +43,7 @@ jobs:
           uv run pyinstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
           --add-data="icon.txt${{ matrix.data_sep }}." main.py
 
-      - name: Prepare and Package Artifacts (Unix)
+      - name: Package Artifacts (Unix)
         if: matrix.os != 'windows-latest'
         shell: bash
         run: |
@@ -52,7 +52,7 @@ jobs:
           tar -czf MGUI_QEMU.tar.gz MGUI_QEMU
           zip MGUI_QEMU.zip MGUI_QEMU
 
-      - name: Prepare and Package Artifacts (Windows)
+      - name: Package Artifacts (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
@@ -64,11 +64,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: |
-            dist/*.zip
-            dist/*.tar.gz
+          path: dist/MGUI_QEMU.*
 
-  # 2. Збірка для специфічних Linux дистрибутивів
+  # 2. Специфічні Linux (Arch та Fedora)
   build-linux-distros:
     name: Build for ${{ matrix.distro }}
     runs-on: ubuntu-latest
@@ -82,12 +80,6 @@ jobs:
           - distro: fedora
             image: fedora:latest
             artifact_name: MGUI_QEMU_Fedora
-          - distro: gentoo
-            image: gentoo/stage3:latest
-            artifact_name: MGUI_QEMU_Gentoo
-          - distro: debian
-            image: debian:stable-slim
-            artifact_name: MGUI_QEMU_Debian
     container:
       image: ${{ matrix.image }}
     steps:
@@ -101,26 +93,18 @@ jobs:
             pacman -Syu --noconfirm python python-pip qt6-base base-devel binutils zip tar krb5
           elif [ "${{ matrix.distro }}" = "fedora" ]; then
             dnf install -y python3 python3-pip qt6-qtbase-devel gcc binutils zip tar krb5-libs
-          elif [ "${{ matrix.distro }}" = "gentoo" ]; then
-            emerge-webrsync || true
-            mkdir -p /etc/portage/package.use
-            echo "x11-libs/libxkbcommon X" >> /etc/portage/package.use/qt
-            emerge --usepkg --binpkg-changed-deps=y --autounmask-continue=y dev-lang/python dev-python/pip dev-qt/qtbase sys-devel/gcc sys-devel/binutils app-arch/zip app-arch/tar
-          elif [ "${{ matrix.distro }}" = "debian" ]; then
-            apt-get update && apt-get install -y python3 python3-pip python3-venv libqt6core6 libgssapi-krb5-2 libkrb5-3 gcc binutils zip tar
           fi
 
-      - name: Install uv inside container
+      - name: Install uv
         run: python3 -m pip install uv --break-system-packages
 
       - name: Build with PyInstaller
-        shell: bash
         run: |
           uv run --with pyinstaller --with PySide6 --with psutil \
           pyinstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
           --add-data="icon.txt:." main.py
 
-      - name: Prepare and Package Artifacts
+      - name: Package
         shell: bash
         run: |
           cd dist
@@ -132,6 +116,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: |
-            dist/*.zip
-            dist/*.tar.gz
+          path: dist/MGUI_QEMU.*
