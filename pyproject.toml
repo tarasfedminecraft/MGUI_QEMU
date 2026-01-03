@@ -9,7 +9,7 @@ dependencies = [
     "pyside6>=6.6.0",
 ]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pyinstaller>=6.0.0",
 ]
