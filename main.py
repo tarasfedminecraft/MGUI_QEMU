@@ -5,6 +5,7 @@ import shlex
 import socket
 import threading
 import platform
+import time  # Додано для пауз
 from pathlib import Path
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QHBoxLayout, QLineEdit, QPushButton, QLabel,
@@ -43,7 +44,7 @@ class MguiQemu(QMainWindow):
 
         # Сигнали процесу
         self.process.started.connect(self.update_status_ui)
-        self.process.finished.connect(self.update_status_ui)
+        self.process.finished.connect(self.on_process_finished)  # Оновлено
         self.process.readyReadStandardError.connect(self.read_stderr)
 
         # Таймер статистики
@@ -62,7 +63,6 @@ class MguiQemu(QMainWindow):
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
 
-        # --- Ліва панель (Sidebar) ---
         sidebar = QVBoxLayout()
         self.vm_list = QListWidget()
         self.vm_list.currentTextChanged.connect(self.load_vm)
@@ -96,7 +96,6 @@ class MguiQemu(QMainWindow):
 
         main_layout.addLayout(sidebar, 1)
 
-        # --- Права панель (Tabs) ---
         right_layout = QVBoxLayout()
         self.tabs = QTabWidget()
 
@@ -144,19 +143,14 @@ class MguiQemu(QMainWindow):
         # Вкладка Експерт
         self.tab_ex = QWidget()
         ex_l = QVBoxLayout(self.tab_ex)
-
-        # Вибір шляху до QEMU
         path_group = QHBoxLayout()
         self.f_qemu_path = QLineEdit()
-        self.f_qemu_path.setPlaceholderText("Шлях до бінарного файлу QEMU...")
         btn_qemu_br = QPushButton("Огляд")
         btn_qemu_br.clicked.connect(self.select_qemu_executable)
         path_group.addWidget(self.f_qemu_path)
         path_group.addWidget(btn_qemu_br)
-
         ex_l.addWidget(QLabel("Шлях до QEMU (Binary):"))
         ex_l.addLayout(path_group)
-
         self.f_extra = QPlainTextEdit()
         ex_l.addWidget(QLabel("Додаткові аргументи:"))
         ex_l.addWidget(self.f_extra)
@@ -164,7 +158,6 @@ class MguiQemu(QMainWindow):
 
         right_layout.addWidget(self.tabs)
 
-        # Прев'ю команди
         self.cmd_preview = QPlainTextEdit()
         self.cmd_preview.setReadOnly(True)
         self.cmd_preview.setFixedHeight(80)
@@ -178,10 +171,9 @@ class MguiQemu(QMainWindow):
 
         main_layout.addLayout(right_layout, 3)
 
-        # Авто-детект при першому запуску
         self.update_qemu_path_auto()
 
-        # Підключення авто-оновлення прев'ю
+        # Зв'язки для оновлення
         for w in [self.f_arch, self.f_machine, self.f_cpu, self.f_ram, self.f_smp, self.f_boot]:
             if isinstance(w, QComboBox):
                 w.currentIndexChanged.connect(self.update_preview)
@@ -197,14 +189,11 @@ class MguiQemu(QMainWindow):
         self.update_preview()
 
     def update_qemu_path_auto(self):
-        """Автоматично шукає QEMU залежно від обраної архітектури"""
         arch = self.arch_map.get(self.f_arch.currentText(), "x86_64")
         binary_name = f"qemu-system-{arch}"
-
         if platform.system() == "Windows":
             binary_name += ".exe"
-            common_paths = [Path("C:/Program Files/qemu"), Path("C:/qemu")]
-            for base in common_paths:
+            for base in [Path("C:/Program Files/qemu"), Path("C:/qemu")]:
                 full_path = base / binary_name
                 if full_path.exists():
                     self.f_qemu_path.setText(str(full_path).replace("\\", "/"))
@@ -214,19 +203,14 @@ class MguiQemu(QMainWindow):
     def select_qemu_executable(self):
         file_filter = "Executables (*.exe)" if platform.system() == "Windows" else "All Files (*)"
         file_path, _ = QFileDialog.getOpenFileName(self, "Виберіть бінарний файл QEMU", "", file_filter)
-        if file_path:
-            self.f_qemu_path.setText(file_path)
+        if file_path: self.f_qemu_path.setText(file_path)
 
     def generate_command_list(self):
-        # Використовуємо шлях з поля "Експерт"
         qemu_bin = self.f_qemu_path.text().strip()
         if not qemu_bin:
-            arch = self.arch_map.get(self.f_arch.currentText(), "x86_64")
-            qemu_bin = f"qemu-system-{arch}"
+            qemu_bin = f"qemu-system-{self.arch_map.get(self.f_arch.currentText(), 'x86_64')}"
 
         cmd = [qemu_bin]
-
-        # Автоматичне прискорення
         sys_os = platform.system()
         if self.f_cpu.currentText() == "host":
             if sys_os == "Linux":
@@ -236,17 +220,14 @@ class MguiQemu(QMainWindow):
             elif sys_os == "Darwin":
                 cmd.extend(["-accel", "hvf"])
 
-        # QMP
-        self.qmp_port = self.find_free_port()
-        cmd.extend(["-qmp", f"tcp:localhost:{self.qmp_port},server,nowait"])
+        # Використовуємо стабільний порт для сесії
+        cmd.extend(["-qmp", f"tcp:127.0.0.1:{self.qmp_port},server,nowait"])
 
-        # Ресурси
         cmd.extend(["-m", str(self.f_ram.value())])
         cmd.extend(["-smp", str(self.f_smp.value())])
         cmd.extend(["-M", self.f_machine.currentText()])
         cmd.extend(["-cpu", self.f_cpu.currentText()])
 
-        # Диски
         path = self.f_disk.text()
         if path:
             if path.lower().endswith(".iso"):
@@ -254,38 +235,39 @@ class MguiQemu(QMainWindow):
             else:
                 cmd.extend(["-drive", f"file={path},if=virtio"])
 
-        # Завантаження
         boot_mode = "c" if "Disk" in self.f_boot.currentText() else "d"
         cmd.extend(["-boot", boot_mode])
 
-        # Експертні налаштування
         extra = self.f_extra.toPlainText().strip()
         if extra: cmd.extend(shlex.split(extra))
-
         return cmd
-
-    @staticmethod
-    def find_free_port():
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(('127.0.0.1', 0))
-            return s.getsockname()[1]
 
     def update_preview(self):
         try:
-            full_cmd = " ".join(self.generate_command_list())
-            self.cmd_preview.setPlainText(full_cmd)
+            self.cmd_preview.setPlainText(" ".join(self.generate_command_list()))
         except Exception as e:
-            self.cmd_preview.setPlainText(f"Помилка генерації: {e}")
+            self.cmd_preview.setPlainText(f"Помилка: {e}")
 
     def run_vm(self):
         if self.process.state() == QProcess.ProcessState.Running:
-            self.process.terminate()
+            self.process.terminate()  # Надсилає Signal 15
             return
 
+        self.qmp_port = self.find_free_port()  # Новий порт при кожному запуску
         args = self.generate_command_list()
+
+        # Перевірка наявності файлу
+        if not Path(args[0]).exists() and "/" in args[0]:
+            QMessageBox.critical(self, "Помилка", f"Файл QEMU не знайдено: {args[0]}")
+            return
+
         self.process.setProgram(args[0])
         self.process.setArguments(args[1:])
         self.process.start()
+
+    def on_process_finished(self):
+        self.update_status_ui()
+        print("QEMU завершив роботу.")
 
     def update_status_ui(self):
         is_run = self.process.state() == QProcess.ProcessState.Running
@@ -297,24 +279,55 @@ class MguiQemu(QMainWindow):
 
     def read_stderr(self):
         err = self.process.readAllStandardError().data().decode()
-        if err: print(f"QEMU ERROR: {err}")
+        if "address already in use" in err.lower():
+            QMessageBox.warning(self, "Порт зайнятий", "QMP порт зайнятий. Спробуйте ще раз.")
+        print(f"QEMU LOG: {err}")
 
     def update_stats(self):
         if psutil:
             self.cpu_bar.setValue(int(psutil.cpu_percent()))
             self.ram_bar.setValue(int(psutil.virtual_memory().percent))
 
+    def send_qmp_command(self, command):
+        def _send():
+            # РОЗУМНЕ ПІДКЛЮЧЕННЯ: 5 спроб з паузою
+            for i in range(5):
+                try:
+                    time.sleep(0.5)  # Пауза, щоб QEMU встиг відкрити сокет
+                    with socket.create_connection(("127.0.0.1", self.qmp_port), timeout=1) as s:
+                        s.recv(1024)  # Привітання
+                        s.sendall(json.dumps({"execute": "qmp_capabilities"}).encode())
+                        s.recv(1024)
+                        s.sendall(json.dumps(command).encode())
+                        print(f"QMP: Команда {command['execute']} надіслана.")
+                        return
+                except ConnectionRefusedError:
+                    print(f"QMP: Спроба {i + 1} не вдалася (очікування сокета...)")
+                except Exception as e:
+                    print(f"QMP Error: {e}")
+                    break
+
+        if self.process.state() == QProcess.ProcessState.Running:
+            threading.Thread(target=_send, daemon=True).start()
+        else:
+            print("QMP: Неможливо надіслати команду, ВМ не запущена.")
+
+    # ... (решта методів save_vm, load_vm, refresh_list, find_free_port без змін) ...
+
+    @staticmethod
+    def find_free_port():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('127.0.0.1', 0))
+            return s.getsockname()[1]
+
     def save_vm(self):
         name = self.f_name.text() or "unnamed_vm"
         p = self.base_path / name
         p.mkdir(exist_ok=True)
         data = {
-            "name": name,
-            "arch": self.f_arch.currentText(),
-            "ram": self.f_ram.value(),
-            "disk": self.f_disk.text(),
-            "cpu": self.f_cpu.currentText(),
-            "smp": self.f_smp.value(),
+            "name": name, "arch": self.f_arch.currentText(),
+            "ram": self.f_ram.value(), "disk": self.f_disk.text(),
+            "cpu": self.f_cpu.currentText(), "smp": self.f_smp.value(),
             "qemu_path": self.f_qemu_path.text()
         }
         with open(p / "config.json", "w", encoding='utf-8') as f:
@@ -343,21 +356,7 @@ class MguiQemu(QMainWindow):
 
     def select_file(self, line_edit):
         file_path, _ = QFileDialog.getOpenFileName(self, "Виберіть файл")
-        if file_path:
-            line_edit.setText(file_path)
-
-    def send_qmp_command(self, command):
-        def _send():
-            try:
-                with socket.create_connection(("127.0.0.1", self.qmp_port), timeout=1) as s:
-                    s.recv(1024)
-                    s.sendall(json.dumps({"execute": "qmp_capabilities"}).encode())
-                    s.recv(1024)
-                    s.sendall(json.dumps(command).encode())
-            except Exception as e:
-                print(f"QMP Error: {e}")
-
-        threading.Thread(target=_send, daemon=True).start()
+        if file_path: line_edit.setText(file_path)
 
 
 if __name__ == "__main__":
