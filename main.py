@@ -29,7 +29,7 @@ class MguiQemu(QMainWindow):
         self.setWindowTitle("MGUI_QEMU - Professional Virtualization Control")
         self.setMinimumSize(1200, 900)
 
-        # UI атрибути
+        # UI attributes
         self.is_dark = False
         self.vm_list = None
         self.status_label = None
@@ -69,7 +69,7 @@ class MguiQemu(QMainWindow):
         self.init_ui()
         self.apply_system_theme()
 
-        # Сигнали
+        # Signals
         self.process.started.connect(self.update_status_ui)
         self.process.finished.connect(lambda: self.on_process_finished())
         self.process.readyReadStandardError.connect(self.read_stderr)
@@ -97,7 +97,7 @@ class MguiQemu(QMainWindow):
         self.vm_list = QListWidget()
         self.vm_list.currentTextChanged.connect(self.load_vm)
 
-        self.status_label = QLabel("● Стан: Очікування")
+        self.status_label = QLabel("● Status: Idle")
         self.status_label.setStyleSheet("font-weight: bold; color: gray;")
 
         self.cpu_bar = QProgressBar()
@@ -105,7 +105,7 @@ class MguiQemu(QMainWindow):
         self.ram_bar = QProgressBar()
         self.ram_bar.setFormat("RAM: %p%")
 
-        sidebar.addWidget(QLabel("📂 Ваші проекти:"))
+        sidebar.addWidget(QLabel("📂 Saved VMs:"))
         sidebar.addWidget(self.vm_list)
         sidebar.addWidget(self.status_label)
         sidebar.addWidget(self.cpu_bar)
@@ -118,7 +118,7 @@ class MguiQemu(QMainWindow):
             qmp_group.addWidget(btn)
         sidebar.addLayout(qmp_group)
 
-        self.btn_run = QPushButton("🚀 ЗАПУСТИТИ")
+        self.btn_run = QPushButton("🚀 LAUNCH VM")
         self.btn_run.setFixedHeight(50)
         self.btn_run.setStyleSheet(
             "background: #1a4a7a; color: white; font-weight: bold; border-radius: 5px;"
@@ -149,13 +149,13 @@ class MguiQemu(QMainWindow):
         self.f_smp.setRange(1, 32)
         self.f_smp.setValue(2)
 
-        hw_l.addRow("Назва:", self.f_name)
-        hw_l.addRow("Архітектура:", self.f_arch)
-        hw_l.addRow("Машина:", self.f_machine)
-        hw_l.addRow("Процесор:", self.f_cpu)
+        hw_l.addRow("Name:", self.f_name)
+        hw_l.addRow("Architecture:", self.f_arch)
+        hw_l.addRow("Machine Type:", self.f_machine)
+        hw_l.addRow("CPU Model:", self.f_cpu)
         hw_l.addRow("RAM (MB):", self.f_ram)
-        hw_l.addRow("Ядра (SMP):", self.f_smp)
-        self.tabs.addTab(self.tab_hw, "Залізо")
+        hw_l.addRow("Cores (SMP):", self.f_smp)
+        self.tabs.addTab(self.tab_hw, "Hardware")
 
         # Tab Disk
         self.tab_disk = QWidget()
@@ -168,27 +168,27 @@ class MguiQemu(QMainWindow):
         h_disk.addWidget(btn_br)
         self.f_boot = QComboBox()
         self.f_boot.addItems(["Disk (c)", "CD-ROM (d)"])
-        disk_l.addWidget(QLabel("Образ Диска / ISO:"))
+        disk_l.addWidget(QLabel("Disk Image / ISO Path:"))
         disk_l.addLayout(h_disk)
-        disk_l.addWidget(QLabel("Завантаження з:"))
+        disk_l.addWidget(QLabel("Boot Device:"))
         disk_l.addWidget(self.f_boot)
-        self.tabs.addTab(self.tab_disk, "Диски")
+        self.tabs.addTab(self.tab_disk, "Storage")
 
         # Tab Expert
         self.tab_ex = QWidget()
         ex_l = QVBoxLayout(self.tab_ex)
         self.f_qemu_path = QLineEdit()
-        btn_qemu_br = QPushButton("Огляд")
+        btn_qemu_br = QPushButton("Browse...")
         btn_qemu_br.clicked.connect(self.select_qemu_executable)
         path_h = QHBoxLayout()
         path_h.addWidget(self.f_qemu_path)
         path_h.addWidget(btn_qemu_br)
-        ex_l.addWidget(QLabel("Шлях до QEMU (Binary):"))
+        ex_l.addWidget(QLabel("QEMU Binary Path:"))
         ex_l.addLayout(path_h)
         self.f_extra = QPlainTextEdit()
-        ex_l.addWidget(QLabel("Додаткові аргументи:"))
+        ex_l.addWidget(QLabel("Additional Arguments:"))
         ex_l.addWidget(self.f_extra)
-        self.tabs.addTab(self.tab_ex, "Експерт")
+        self.tabs.addTab(self.tab_ex, "Expert")
 
         right_layout.addWidget(self.tabs)
 
@@ -198,10 +198,10 @@ class MguiQemu(QMainWindow):
         self.cmd_preview.setStyleSheet(
             "background: #000; color: #0f0; font-family: 'Consolas'; font-size: 11px;"
         )
-        right_layout.addWidget(QLabel("🛠 Поточна команда:"))
+        right_layout.addWidget(QLabel("🛠 Command Preview:"))
         right_layout.addWidget(self.cmd_preview)
 
-        btn_save = QPushButton("💾 Зберегти конфігурацію")
+        btn_save = QPushButton("💾 Save Configuration")
         btn_save.clicked.connect(self.save_vm)
         right_layout.addWidget(btn_save)
 
@@ -245,7 +245,7 @@ class MguiQemu(QMainWindow):
 
     def select_qemu_executable(self):
         file_filter = "Executables (*.exe)" if platform.system() == "Windows" else "All Files (*)"
-        file_path, _ = QFileDialog.getOpenFileName(self, "Виберіть бінарний файл QEMU", "", file_filter)
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select QEMU Executable", "", file_filter)
         if file_path:
             self.f_qemu_path.setText(file_path)
 
@@ -286,12 +286,12 @@ class MguiQemu(QMainWindow):
 
         return cmd
 
-    # Виправлені методи на рівні класу
+    # Corrected methods at class level
     def update_preview(self):
         try:
             self.cmd_preview.setPlainText(" ".join(self.generate_command_list()))
         except (OSError, FileNotFoundError) as exc:
-            self.cmd_preview.setPlainText(f"Помилка: {exc}")
+            self.cmd_preview.setPlainText(f"Error: {exc}")
 
     def run_vm(self):
         if self.process.state() == QProcess.ProcessState.Running:
@@ -301,14 +301,14 @@ class MguiQemu(QMainWindow):
         self.qmp_port = self.find_free_port()
         args = self.generate_command_list()
         if not args:
-            QMessageBox.critical(self, "Помилка", "Неможливо сформувати команду для запуску QEMU")
+            QMessageBox.critical(self, "Error", "Unable to generate QEMU launch command")
             return
 
         executable_path = shutil.which(str(args[0]))
         if not executable_path:
             QMessageBox.critical(
-                self, "Помилка",
-                f"QEMU не знайдено: {args[0]}\nПеревірте шлях у вкладці 'Експерт'."
+                self, "Error",
+                f"QEMU binary not found: {args[0]}\nPlease check the path in the 'Expert' tab."
             )
             return
 
@@ -318,15 +318,15 @@ class MguiQemu(QMainWindow):
 
     def on_process_finished(self):
         self.update_status_ui()
-        print("QEMU завершив роботу.")
+        print("QEMU process finished.")
 
     def update_status_ui(self):
         is_run = self.process.state() == QProcess.ProcessState.Running
-        self.btn_run.setText("🛑 ЗУПИНИТИ" if is_run else "🚀 ЗАПУСТИТИ")
+        self.btn_run.setText("🛑 STOP VM" if is_run else "🚀 LAUNCH VM")
         self.btn_run.setStyleSheet(
             f"background: {'#9e1a1a' if is_run else '#1a4a7a'}; color: white; font-weight: bold;"
         )
-        self.status_label.setText(f"● Стан: {'ПРАЦЮЄ' if is_run else 'Зупинено'}")
+        self.status_label.setText(f"● Status: {'RUNNING' if is_run else 'Idle'}")
         self.status_label.setStyleSheet(
             f"color: {'#00ff00' if is_run else 'gray'}; font-weight: bold;"
         )
@@ -354,7 +354,7 @@ class MguiQemu(QMainWindow):
                         s.sendall(json.dumps({"execute": "qmp_capabilities"}).encode())
                         s.recv(1024)
                         s.sendall(json.dumps(command).encode())
-                        print(f"QMP: {command['execute']} надіслана успішно.")
+                        print(f"QMP: {command['execute']} sent successfully.")
                         return
                 except OSError as exc:
                     print(f"QMP Retry {i + 1}: {exc}")
@@ -382,9 +382,9 @@ class MguiQemu(QMainWindow):
             with open(p / "config.json", "w", encoding='utf-8') as f:
                 json.dump(data, f, indent=4)
             self.refresh_list()
-            QMessageBox.information(self, "Успіх", "Конфігурацію збережено!")
+            QMessageBox.information(self, "Success", "Configuration saved successfully!")
         except (OSError, FileNotFoundError) as exc:
-            QMessageBox.critical(self, "Помилка", f"Не вдалося зберегти: {exc}")
+            QMessageBox.critical(self, "Error", f"Failed to save: {exc}")
 
     def load_vm(self, name):
         p = self.base_path / name / "config.json"
@@ -404,7 +404,7 @@ class MguiQemu(QMainWindow):
                 self.f_qemu_path.setText(d.get("qemu_path", ""))
                 self.f_extra.setPlainText(d.get("extra", ""))
         except (OSError, JSONDecodeError) as exc:
-            print(f"Помилка завантаження: {exc}")
+            print(f"Load error: {exc}")
         self.update_preview()
 
     def refresh_list(self):
@@ -415,7 +415,7 @@ class MguiQemu(QMainWindow):
                     self.vm_list.addItem(d.name)
 
     def select_file(self, line_edit):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Виберіть файл")
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select File")
         if file_path:
             line_edit.setText(file_path)
 
