@@ -4,18 +4,26 @@ updates:
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday" # Перевірка кожного понеділка
-    open-pull-requests-limit: 5
+      interval: "daily"     # Перевірка кожного дня для мінімальної затримки
+      time: "08:00"         # Отримуй оновлення зранку (за UTC)
+      timezone: "Europe/Kyiv"
+    open-pull-requests-limit: 10 # Збільшено ліміт, щоб не пропускати важливі патчі
     labels:
       - "dependencies"
       - "python"
+    reviewers:
+      - "tarasfedminecraft" # Бот одразу призначить тебе рев'юером (пришвидшує процес)
 
-  # 2. Оновлення для самих GitHub Actions
+  # 2. Оновлення для GitHub Actions (workflow скрипти)
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "daily"     # Перевірка кожного дня
+      time: "08:00"
+      timezone: "Europe/Kyiv"
+    open-pull-requests-limit: 10
     labels:
       - "dependencies"
       - "github-actions"
+    reviewers:
+      - "tarasfedminecraft"
