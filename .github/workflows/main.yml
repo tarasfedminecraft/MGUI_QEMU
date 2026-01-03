@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  # 1. Збірка для стандартних Windows, Ubuntu та MacOS
+  # 1. Збірка для основних ОС (Windows, Ubuntu, MacOS)
   build-main:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -46,13 +46,29 @@ jobs:
           uv run pyinstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
           --add-data="icon.txt${{ matrix.data_sep }}." main.py
 
-      - name: Upload Artifact
+      - name: Prepare and Package Artifacts
+        shell: bash
+        run: |
+          cd dist
+          if [[ "${{ matrix.os }}" != "windows-latest" ]]; then
+            chmod +x MGUI_QEMU
+            tar -czf MGUI_QEMU.tar.gz MGUI_QEMU
+            zip MGUI_QEMU.zip MGUI_QEMU
+          else
+            zip MGUI_QEMU.zip MGUI_QEMU.exe
+            # Tar на Windows рідше потрібен, але для унітарності створимо
+            tar -czf MGUI_QEMU.tar.gz MGUI_QEMU.exe
+          fi
+
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.executable_path }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
 
-  # 2. Збірка для специфічних Linux дистрибутивів (Arch, Fedora, Gentoo)
+  # 2. Збірка для специфічних Linux дистрибутивів
   build-linux-distros:
     name: Build for ${{ matrix.distro }}
     runs-on: ubuntu-latest
@@ -69,6 +85,9 @@ jobs:
           - distro: gentoo
             image: gentoo/stage3:latest
             artifact_name: MGUI_QEMU_Gentoo
+          - distro: debian
+            image: debian:stable-slim
+            artifact_name: MGUI_QEMU_Debian
     container:
       image: ${{ matrix.image }}
     steps:
@@ -79,12 +98,14 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.distro }}" = "archlinux" ]; then
-            pacman -Syu --noconfirm python python-pip qt6-base base-devel binutils
+            pacman -Syu --noconfirm python python-pip qt6-base base-devel binutils zip tar
           elif [ "${{ matrix.distro }}" = "fedora" ]; then
-            dnf install -y python3 python3-pip qt6-qtbase-devel gcc binutils
+            dnf install -y python3 python3-pip qt6-qtbase-devel gcc binutils zip tar
           elif [ "${{ matrix.distro }}" = "gentoo" ]; then
             emerge-webrsync
-            emerge --usepkg --binpkg-changed-deps=y dev-lang/python dev-python/pip dev-qt/qtbase sys-devel/gcc sys-devel/binutils
+            emerge --usepkg --binpkg-changed-deps=y dev-lang/python dev-python/pip dev-qt/qtbase sys-devel/gcc sys-devel/binutils app-arch/zip app-arch/tar
+          elif [ "${{ matrix.distro }}" = "debian" ]; then
+            apt-get update && apt-get install -y python3 python3-pip python3-venv libqt6core6 gcc binutils zip tar
           fi
 
       - name: Install uv inside container
@@ -98,8 +119,18 @@ jobs:
           pyinstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
           --add-data="icon.txt:." main.py
 
-      - name: Upload Artifact
+      - name: Prepare and Package Artifacts
+        shell: bash
+        run: |
+          cd dist
+          chmod +x MGUI_QEMU
+          zip MGUI_QEMU.zip MGUI_QEMU
+          tar -czf MGUI_QEMU.tar.gz MGUI_QEMU
+
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: dist/MGUI_QEMU
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
