@@ -4,7 +4,7 @@ import json
 import shlex
 import socket
 import threading
-import platform  # Додано для визначення ОС
+import platform
 from pathlib import Path
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QHBoxLayout, QLineEdit, QPushButton, QLabel,
@@ -144,6 +144,19 @@ class MguiQemu(QMainWindow):
         # Вкладка Експерт
         self.tab_ex = QWidget()
         ex_l = QVBoxLayout(self.tab_ex)
+
+        # Вибір шляху до QEMU
+        path_group = QHBoxLayout()
+        self.f_qemu_path = QLineEdit()
+        self.f_qemu_path.setPlaceholderText("Шлях до бінарного файлу QEMU...")
+        btn_qemu_br = QPushButton("Огляд")
+        btn_qemu_br.clicked.connect(self.select_qemu_executable)
+        path_group.addWidget(self.f_qemu_path)
+        path_group.addWidget(btn_qemu_br)
+
+        ex_l.addWidget(QLabel("Шлях до QEMU (Binary):"))
+        ex_l.addLayout(path_group)
+
         self.f_extra = QPlainTextEdit()
         ex_l.addWidget(QLabel("Додаткові аргументи:"))
         ex_l.addWidget(self.f_extra)
@@ -165,24 +178,55 @@ class MguiQemu(QMainWindow):
 
         main_layout.addLayout(right_layout, 3)
 
+        # Авто-детект при першому запуску
+        self.update_qemu_path_auto()
+
         # Підключення авто-оновлення прев'ю
         for w in [self.f_arch, self.f_machine, self.f_cpu, self.f_ram, self.f_smp, self.f_boot]:
             if isinstance(w, QComboBox):
                 w.currentIndexChanged.connect(self.update_preview)
             else:
                 w.valueChanged.connect(self.update_preview)
+
+        self.f_arch.currentIndexChanged.connect(self.update_qemu_path_auto)
         self.f_disk.textChanged.connect(self.update_preview)
         self.f_extra.textChanged.connect(self.update_preview)
+        self.f_qemu_path.textChanged.connect(self.update_preview)
 
         self.refresh_list()
         self.update_preview()
 
-    def generate_command_list(self):
-        arch_key = self.f_arch.currentText()
-        arch = self.arch_map.get(arch_key, "x86_64")
-        cmd = [f"qemu-system-{arch}"]
+    def update_qemu_path_auto(self):
+        """Автоматично шукає QEMU залежно від обраної архітектури"""
+        arch = self.arch_map.get(self.f_arch.currentText(), "x86_64")
+        binary_name = f"qemu-system-{arch}"
 
-        # Автоматичне прискорення (ВИПРАВЛЕНО)
+        if platform.system() == "Windows":
+            binary_name += ".exe"
+            common_paths = [Path("C:/Program Files/qemu"), Path("C:/qemu")]
+            for base in common_paths:
+                full_path = base / binary_name
+                if full_path.exists():
+                    self.f_qemu_path.setText(str(full_path).replace("\\", "/"))
+                    return
+        self.f_qemu_path.setText(binary_name)
+
+    def select_qemu_executable(self):
+        file_filter = "Executables (*.exe)" if platform.system() == "Windows" else "All Files (*)"
+        file_path, _ = QFileDialog.getOpenFileName(self, "Виберіть бінарний файл QEMU", "", file_filter)
+        if file_path:
+            self.f_qemu_path.setText(file_path)
+
+    def generate_command_list(self):
+        # Використовуємо шлях з поля "Експерт"
+        qemu_bin = self.f_qemu_path.text().strip()
+        if not qemu_bin:
+            arch = self.arch_map.get(self.f_arch.currentText(), "x86_64")
+            qemu_bin = f"qemu-system-{arch}"
+
+        cmd = [qemu_bin]
+
+        # Автоматичне прискорення
         sys_os = platform.system()
         if self.f_cpu.currentText() == "host":
             if sys_os == "Linux":
@@ -270,7 +314,8 @@ class MguiQemu(QMainWindow):
             "ram": self.f_ram.value(),
             "disk": self.f_disk.text(),
             "cpu": self.f_cpu.currentText(),
-            "smp": self.f_smp.value()
+            "smp": self.f_smp.value(),
+            "qemu_path": self.f_qemu_path.text()
         }
         with open(p / "config.json", "w", encoding='utf-8') as f:
             json.dump(data, f, indent=4)
@@ -286,6 +331,8 @@ class MguiQemu(QMainWindow):
                 self.f_disk.setText(d.get("disk", ""))
                 self.f_ram.setValue(d.get("ram", 2048))
                 self.f_cpu.setCurrentText(d.get("cpu", "qemu64"))
+                self.f_arch.setCurrentText(d.get("arch", "x86_64"))
+                self.f_qemu_path.setText(d.get("qemu_path", ""))
         self.update_preview()
 
     def refresh_list(self):
@@ -303,7 +350,7 @@ class MguiQemu(QMainWindow):
         def _send():
             try:
                 with socket.create_connection(("127.0.0.1", self.qmp_port), timeout=1) as s:
-                    s.recv(1024)  # Привітання
+                    s.recv(1024)
                     s.sendall(json.dumps({"execute": "qmp_capabilities"}).encode())
                     s.recv(1024)
                     s.sendall(json.dumps(command).encode())
