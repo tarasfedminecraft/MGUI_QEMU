@@ -17,15 +17,12 @@ jobs:
         include:
           - os: windows-latest
             artifact_name: MGUI_QEMU_Windows
-            executable_path: dist/MGUI_QEMU.exe
             data_sep: ';'
           - os: ubuntu-latest
             artifact_name: MGUI_QEMU_Ubuntu
-            executable_path: dist/MGUI_QEMU
             data_sep: ':'
           - os: macos-latest
             artifact_name: MGUI_QEMU_MacOS
-            executable_path: dist/MGUI_QEMU
             data_sep: ':'
     steps:
       - name: Checkout code
@@ -46,19 +43,22 @@ jobs:
           uv run pyinstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
           --add-data="icon.txt${{ matrix.data_sep }}." main.py
 
-      - name: Prepare and Package Artifacts
+      - name: Prepare and Package Artifacts (Unix)
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           cd dist
-          if [[ "${{ matrix.os }}" != "windows-latest" ]]; then
-            chmod +x MGUI_QEMU
-            tar -czf MGUI_QEMU.tar.gz MGUI_QEMU
-            zip MGUI_QEMU.zip MGUI_QEMU
-          else
-            zip MGUI_QEMU.zip MGUI_QEMU.exe
-            # Tar на Windows рідше потрібен, але для унітарності створимо
-            tar -czf MGUI_QEMU.tar.gz MGUI_QEMU.exe
-          fi
+          chmod +x MGUI_QEMU || true
+          tar -czf MGUI_QEMU.tar.gz MGUI_QEMU
+          zip MGUI_QEMU.zip MGUI_QEMU
+
+      - name: Prepare and Package Artifacts (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          cd dist
+          Compress-Archive -Path MGUI_QEMU.exe -DestinationPath MGUI_QEMU.zip -Force
+          tar -czf MGUI_QEMU.tar.gz MGUI_QEMU.exe
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
@@ -102,15 +102,14 @@ jobs:
           elif [ "${{ matrix.distro }}" = "fedora" ]; then
             dnf install -y python3 python3-pip qt6-qtbase-devel gcc binutils zip tar
           elif [ "${{ matrix.distro }}" = "gentoo" ]; then
-            emerge-webrsync
+            emerge-webrsync || true
             emerge --usepkg --binpkg-changed-deps=y dev-lang/python dev-python/pip dev-qt/qtbase sys-devel/gcc sys-devel/binutils app-arch/zip app-arch/tar
           elif [ "${{ matrix.distro }}" = "debian" ]; then
             apt-get update && apt-get install -y python3 python3-pip python3-venv libqt6core6 gcc binutils zip tar
           fi
 
       - name: Install uv inside container
-        run: |
-          python3 -m pip install uv --break-system-packages
+        run: python3 -m pip install uv --break-system-packages
 
       - name: Build with PyInstaller
         shell: bash
@@ -123,7 +122,7 @@ jobs:
         shell: bash
         run: |
           cd dist
-          chmod +x MGUI_QEMU
+          chmod +x MGUI_QEMU || true
           zip MGUI_QEMU.zip MGUI_QEMU
           tar -czf MGUI_QEMU.tar.gz MGUI_QEMU
 
