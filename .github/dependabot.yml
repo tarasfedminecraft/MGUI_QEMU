@@ -1,0 +1,21 @@
+version: 2
+updates:
+  # 1. Оновлення для Python бібліотек (PySide6, psutil тощо)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday" # Перевірка кожного понеділка
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "python"
+
+  # 2. Оновлення для самих GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "github-actions"
