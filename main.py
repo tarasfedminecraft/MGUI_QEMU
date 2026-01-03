@@ -1,18 +1,17 @@
+# cspell:ignore aarch loongarch hppa Xtensa xtensa qapp powerdown virt QCOW qcow virtio
 import sys
 import json
 import shlex
-import os
 import socket
 import threading
-import time
 from pathlib import Path
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QHBoxLayout, QLineEdit, QPushButton, QLabel,
                                QFileDialog, QSpinBox, QListWidget, QMessageBox,
-                               QPlainTextEdit, QTabWidget, QCheckBox, QComboBox,
-                               QProgressBar, QDialog, QFormLayout)
-from PySide6.QtCore import QProcess, Qt, QTimer
-from PySide6.QtGui import QPalette, QColor
+                               QPlainTextEdit, QTabWidget, QComboBox,
+                               QProgressBar, QFormLayout)
+from PySide6.QtCore import QProcess, QTimer
+from PySide6.QtGui import QPalette
 
 try:
     import psutil
@@ -21,11 +20,57 @@ except ImportError:
 
 
 class MguiQemu(QMainWindow):
+    # explicit attribute annotations help static checkers resolve Signals and widget methods
+    vm_list: QListWidget
+    status_label: QLabel
+    cpu_bar: QProgressBar
+    ram_bar: QProgressBar
+    btn_run: QPushButton
+    tabs: QTabWidget
+    cmd_preview: QPlainTextEdit
+    f_name: QLineEdit
+    f_arch: QComboBox
+    f_machine: QComboBox
+    f_cpu: QComboBox
+    f_ram: QSpinBox
+    f_smp: QSpinBox
+    f_disk: QLineEdit
+    f_boot: QComboBox
+    conv_src: QLineEdit
+    conv_fmt: QComboBox
+    f_extra: QPlainTextEdit
+    is_dark: bool
+    qmp_port: int
+    process: QProcess
+
     def __init__(self):
         super().__init__()
+
+        # Initialize all UI attributes with correct widget types
+        self.is_dark = False
+        self.vm_list = QListWidget()
+        self.status_label = QLabel()
+        self.cpu_bar = QProgressBar()
+        self.ram_bar = QProgressBar()
+        self.btn_run = QPushButton()
+        self.tabs = QTabWidget()
+        self.cmd_preview = QPlainTextEdit()
+        self.f_name = QLineEdit()
+        self.f_arch = QComboBox()
+        self.f_machine = QComboBox()
+        self.f_cpu = QComboBox()
+        self.f_ram = QSpinBox()
+        self.f_smp = QSpinBox()
+        self.f_disk = QLineEdit()
+        self.f_boot = QComboBox()
+        self.conv_src = QLineEdit()
+        self.conv_fmt = QComboBox()
+        self.f_extra = QPlainTextEdit()
+
         self.setWindowTitle("MGUI_QEMU - Professional Virtualization Control")
         self.setMinimumSize(1200, 900)
 
+        # get palette safely and avoid shadowing the module-level 'app' name
         self.apply_system_theme()
 
         self.arch_map = {
@@ -42,24 +87,26 @@ class MguiQemu(QMainWindow):
         self.base_path.mkdir(exist_ok=True)
 
         self.process = QProcess()
-        self.process.started.connect(self.update_status_ui)
-        self.process.finished.connect(self.update_status_ui)
-        self.process.readyReadStandardError.connect(self.read_stderr)
+        self.process.started.connect(self.update_status_ui)  # type: ignore
+        self.process.finished.connect(self.update_status_ui)  # type: ignore
+        self.process.readyReadStandardError.connect(self.read_stderr)  # type: ignore
 
         self.init_ui()
 
         self.stats_timer = QTimer()
-        self.stats_timer.timeout.connect(self.update_stats)
+        self.stats_timer.timeout.connect(self.update_stats)  # type: ignore
         self.stats_timer.start(2000)
 
     def apply_system_theme(self):
-        app = QApplication.instance()
-        palette = app.palette()
-        bg_color = palette.color(QPalette.Window).lightness()
-        if bg_color < 128:
-            self.is_dark = True
-        else:
+        # be explicit about the application type so type checkers know palette() is available
+        qapp = QApplication.instance()
+        if not isinstance(qapp, QApplication):
             self.is_dark = False
+            return
+        palette = qapp.palette()
+        # use ColorRole enum variant to avoid unresolved attribute complaints
+        bg_color = palette.color(QPalette.ColorRole.Window).lightness()
+        self.is_dark = bg_color < 128
 
     def init_ui(self):
         central = QWidget()
@@ -68,7 +115,7 @@ class MguiQemu(QMainWindow):
 
         sidebar = QVBoxLayout()
         self.vm_list = QListWidget()
-        self.vm_list.currentTextChanged.connect(self.load_vm)
+        self.vm_list.currentTextChanged.connect(self.load_vm)  # type: ignore
 
         self.status_label = QLabel("● Стан: Очікування")
         self.status_label.setStyleSheet("font-weight: bold; color: gray;")
@@ -87,14 +134,14 @@ class MguiQemu(QMainWindow):
         qmp_group = QHBoxLayout()
         for icon, cmd in [("⏸", "stop"), ("▶", "cont"), ("🛑", "system_powerdown")]:
             btn = QPushButton(icon)
-            btn.clicked.connect(lambda chk=False, c=cmd: self.send_qmp_command({"execute": c}))
+            btn.clicked.connect(lambda chk=False, c=cmd: self.send_qmp_command({"execute": c}))  # type: ignore
             qmp_group.addWidget(btn)
         sidebar.addLayout(qmp_group)
 
         self.btn_run = QPushButton("🚀 ЗАПУСТИТИ")
         self.btn_run.setFixedHeight(50)
         self.btn_run.setStyleSheet("background: #1a4a7a; color: white; font-weight: bold;")
-        self.btn_run.clicked.connect(self.run_vm)
+        self.btn_run.clicked.connect(self.run_vm)  # type: ignore
         sidebar.addWidget(self.btn_run)
 
         main_layout.addLayout(sidebar, 1)
@@ -118,7 +165,7 @@ class MguiQemu(QMainWindow):
         right_layout.addWidget(self.cmd_preview)
 
         btn_save = QPushButton("💾 Зберегти конфігурацію")
-        btn_save.clicked.connect(self.save_vm)
+        btn_save.clicked.connect(self.save_vm)  # type: ignore
         right_layout.addWidget(btn_save)
 
         main_layout.addLayout(right_layout, 3)
@@ -150,9 +197,12 @@ class MguiQemu(QMainWindow):
 
         self.tabs.addTab(tab, "Залізо")
         for w in [self.f_name, self.f_arch, self.f_ram, self.f_smp]:
-            if hasattr(w, "textChanged"): w.textChanged.connect(self.update_preview)
-            if hasattr(w, "currentIndexChanged"): w.currentIndexChanged.connect(self.update_preview)
-            if hasattr(w, "valueChanged"): w.valueChanged.connect(self.update_preview)
+            if hasattr(w, "textChanged"):
+                w.textChanged.connect(self.update_preview)  # type: ignore
+            if hasattr(w, "currentIndexChanged"):
+                w.currentIndexChanged.connect(self.update_preview)  # type: ignore
+            if hasattr(w, "valueChanged"):
+                w.valueChanged.connect(self.update_preview)  # type: ignore
 
     def init_storage_tab(self):
         tab = QWidget()
@@ -161,7 +211,7 @@ class MguiQemu(QMainWindow):
         h = QHBoxLayout()
         self.f_disk = QLineEdit()
         btn_browse = QPushButton("📁")
-        btn_browse.clicked.connect(lambda: self.select_file(self.f_disk))
+        btn_browse.clicked.connect(lambda: self.select_file(self.f_disk))  # type: ignore
         h.addWidget(self.f_disk)
         h.addWidget(btn_browse)
 
@@ -174,7 +224,7 @@ class MguiQemu(QMainWindow):
         l.addWidget(self.f_boot)
 
         btn_create = QPushButton("💎 Створити новий порожній диск (QCOW2)")
-        btn_create.clicked.connect(self.tool_create_disk)
+        btn_create.clicked.connect(self.tool_create_disk)  # type: ignore
         l.addWidget(btn_create)
 
         l.addStretch()
@@ -188,13 +238,13 @@ class MguiQemu(QMainWindow):
 
         self.conv_src = QLineEdit()
         btn_src = QPushButton("Вибрати джерело")
-        btn_src.clicked.connect(lambda: self.select_file(self.conv_src))
+        btn_src.clicked.connect(lambda: self.select_file(self.conv_src))  # type: ignore
 
         self.conv_fmt = QComboBox()
         self.conv_fmt.addItems(["qcow2", "raw", "vmdk", "vdi", "iso"])
 
         btn_do_conv = QPushButton("🔄 Почати конвертацію")
-        btn_do_conv.clicked.connect(self.tool_convert_disk)
+        btn_do_conv.clicked.connect(self.tool_convert_disk)  # type: ignore
 
         l.addWidget(self.conv_src)
         l.addWidget(btn_src)
@@ -212,11 +262,14 @@ class MguiQemu(QMainWindow):
         l.addWidget(self.f_extra)
         self.tabs.addTab(tab, "Експерт")
 
-    def find_free_port(self):
+    @staticmethod
+    def find_free_port():
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind(('', 0))
-        port = s.getsockname()[1]
-        s.close()
+        try:
+            s.bind(('', 0))
+            port = s.getsockname()[1]
+        finally:
+            s.close()
         return port
 
     def generate_command_list(self):
@@ -261,26 +314,44 @@ class MguiQemu(QMainWindow):
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.settimeout(1.0)
                 s.connect(("127.0.0.1", self.qmp_port))
-                s.recv(1024)
+                # initial greeting
+                try:
+                    s.recv(1024)
+                except socket.timeout:
+                    pass
                 s.sendall(json.dumps({"execute": "qmp_capabilities"}).encode())
-                s.recv(1024)
+                try:
+                    s.recv(1024)
+                except socket.timeout:
+                    pass
                 s.sendall(json.dumps(command).encode())
                 s.close()
-            except:
-                pass
+            except (socket.timeout, ConnectionRefusedError, OSError) as e:
+                # log/debug only; avoid silencing all exceptions
+                print("QMP send failed:", e)
 
         threading.Thread(target=_send, daemon=True).start()
 
     def update_stats(self):
-        if psutil:
-            self.cpu_bar.setValue(int(psutil.cpu_percent()))
-            self.ram_bar.setValue(int(psutil.virtual_memory().percent))
+        # avoid calling psutil when it's not available and narrow caught exceptions
+        if psutil and hasattr(psutil, "virtual_memory"):
+            try:
+                self.cpu_bar.setValue(int(psutil.cpu_percent()))
+                self.ram_bar.setValue(int(psutil.virtual_memory().percent))
+            except (AttributeError, OSError) as e:
+                # log minimal info for debugging
+                print("psutil stats failed:", e)
 
     def tool_create_disk(self):
         path, _ = QFileDialog.getSaveFileName(self, "Зберегти диск", "", "QEMU Image (*.qcow2)")
         if path:
-            size, ok = QMessageBox.question(self, "Розмір", "Створити диск на 20ГБ?", QMessageBox.Yes | QMessageBox.No)
-            s_val = "20G" if size == QMessageBox.Yes else "40G"
+            reply = QMessageBox.question(
+                self,
+                "Розмір",
+                "Створити диск на 20ГБ?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            s_val = "20G" if reply == QMessageBox.StandardButton.Yes else "40G"
             QProcess.execute("qemu-img", ["create", "-f", "qcow2", path, s_val])
             self.f_disk.setText(path)
 
@@ -332,13 +403,16 @@ class MguiQemu(QMainWindow):
 
     def select_file(self, line):
         f, _ = QFileDialog.getOpenFileName(self, "Виберіть файл")
-        if f: line.setText(f); self.update_preview()
+        if f:
+            line.setText(f)
+            self.update_preview()
 
     def update_preview(self):
+        # narrow exception types; preview generation rarely fails with ValueError/OSError
         try:
             self.cmd_preview.setPlainText(" ".join(self.generate_command_list()))
-        except:
-            pass
+        except (ValueError, OSError) as e:
+            print("Preview update failed:", e)
 
     def clear_fields(self):
         self.f_name.clear()
