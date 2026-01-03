@@ -2,11 +2,13 @@ name: Build MGUI_QEMU Multi-Platform
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [ main ] # Реліз створюється на кожен коміт у main
+
+permissions:
+  contents: write
 
 jobs:
+  # 1. Основні ОС (Windows, Ubuntu, MacOS)
   build-main:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -15,44 +17,43 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact_name: MGUI_QEMU_Windows
-            executable_path: dist/MGUI_QEMU.exe
+            artifact_name: Windows
             data_sep: ';'
           - os: ubuntu-latest
-            artifact_name: MGUI_QEMU_Ubuntu
-            executable_path: dist/MGUI_QEMU
+            artifact_name: Ubuntu
             data_sep: ':'
           - os: macos-latest
-            artifact_name: MGUI_QEMU_MacOS
-            executable_path: dist/MGUI_QEMU
+            artifact_name: MacOS
             data_sep: ':'
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-          cache: 'pip'
-
-      - name: Install dependencies
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Build
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install PySide6 psutil pyinstaller
-
-      - name: Build with PyInstaller
-        run: |
-          # Передаємо аргумент через знак = та лапки для уникнення помилок синтаксису
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
+          uv run pyinstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
           --add-data="icon.txt${{ matrix.data_sep }}." main.py
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      - name: Package
+        shell: bash
+        run: |
+          cd dist
+          PLATFORM_NAME="MGUI_QEMU_${{ matrix.artifact_name }}"
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            powershell -Command "Compress-Archive -Path MGUI_QEMU.exe -DestinationPath ${PLATFORM_NAME}.zip -Force"
+            tar -czf ${PLATFORM_NAME}.tar.gz MGUI_QEMU.exe
+          else
+            chmod +x MGUI_QEMU || true
+            tar -czf ${PLATFORM_NAME}.tar.gz MGUI_QEMU
+            zip ${PLATFORM_NAME}.zip MGUI_QEMU
+          fi
+      - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.executable_path }}
+          name: MGUI_QEMU_${{ matrix.artifact_name }}
+          path: dist/MGUI_QEMU_*.*
 
+  # 2. Специфічні Linux (Arch та Fedora)
   build-linux-distros:
     name: Build for ${{ matrix.distro }}
     runs-on: ubuntu-latest
@@ -62,34 +63,65 @@ jobs:
         include:
           - distro: archlinux
             image: archlinux:latest
-            artifact_name: MGUI_QEMU_Arch
           - distro: fedora
             image: fedora:latest
-            artifact_name: MGUI_QEMU_Fedora
     container:
       image: ${{ matrix.image }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Install System Dependencies
+        shell: bash
         run: |
           if [ "${{ matrix.distro }}" = "archlinux" ]; then
-            pacman -Syu --noconfirm python python-pip qt6-base base-devel binutils
-          else
-            dnf install -y python3 python3-pip qt6-qtbase-devel gcc binutils
+            pacman -Syu --noconfirm python python-pip qt6-base base-devel binutils zip tar krb5
+          elif [ "${{ matrix.distro }}" = "fedora" ]; then
+            dnf install -y python3 python3-pip qt6-qtbase-devel gcc binutils zip tar krb5-libs
           fi
-
-      - name: Build EXE (Linux Native)
+      - run: python3 -m pip install uv --break-system-packages
+      - name: Build
         run: |
-          python3 -m pip install --upgrade pip --break-system-packages
-          python3 -m pip install PySide6 psutil pyinstaller --break-system-packages
-          # Використовуємо чіткий синтаксис --add-data="..."
-          python3 -m PyInstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
+          uv run --with pyinstaller --with PySide6 --with psutil \
+          pyinstaller --noconfirm --clean --onefile --windowed --name "MGUI_QEMU" \
           --add-data="icon.txt:." main.py
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      - name: Package
+        shell: bash
+        run: |
+          cd dist
+          PLATFORM_NAME="MGUI_QEMU_${{ matrix.distro }}"
+          chmod +x MGUI_QEMU || true
+          zip ${PLATFORM_NAME}.zip MGUI_QEMU
+          tar -czf ${PLATFORM_NAME}.tar.gz MGUI_QEMU
+      - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: dist/MGUI_QEMU
+          name: MGUI_QEMU_${{ matrix.distro }}
+          path: dist/MGUI_QEMU_*.*
+
+  # 3. Автоматичний Реліз на КОЖЕН ПУШ
+  publish-release:
+    name: Create GitHub Release
+    needs: [build-main, build-linux-distros]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set Release Name
+        run: echo "REL_TAG=Release-$(date +'%Y.%m.%d-%H%M%S')-${GITHUB_SHA::7}" >> $GITHUB_ENV
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.REL_TAG }}
+          name: ${{ env.REL_TAG }}
+          files: |
+            ./artifacts/**/*.zip
+            ./artifacts/**/*.tar.gz
+          generate_release_notes: true
+          draft: false
+          prerelease: true    # Тепер це офіційно Pre-release (бета)
+          make_latest: true   # Примусово робить цей реліз найновішим серед інших
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
