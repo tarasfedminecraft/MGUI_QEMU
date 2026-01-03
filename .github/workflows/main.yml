@@ -121,7 +121,7 @@ jobs:
             ./artifacts/**/*.tar.gz
           generate_release_notes: true
           draft: false
-          prerelease: true    # Тепер це офіційно Pre-release (бета)
+          prerelease: false    # Тепер це офіційно Pre-release (бета)
           make_latest: true   # Примусово робить цей реліз найновішим серед інших
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
