@@ -1,6 +1,15 @@
 [project]
-name = "pythonproject"
+name = "MGUI_QEMU"
 version = "0.1.0"
-description = "Add your description here"
+description = "Modern GUI for QEMU"
+readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["psutil>=5.9.0"]
+dependencies = [
+    "psutil>=5.9.0",
+    "pyside6>=6.6.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pyinstaller>=6.0.0",
+]
