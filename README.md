@@ -1,4 +1,4 @@
-![banner2-direct](https://github.com/user-attachments/assets/c84d58b4-4641-4366-a2ae-f8e67d1d4290)
+![banner2-direct](https://savelife.in.ua/donate/#donate-army-card-once)
 
 **Professional GUI for launching and managing QEMU virtual machines**
 
