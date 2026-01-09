@@ -1,5 +1,3 @@
-![banner2-direct](https://savelife.in.ua/donate/#donate-army-card-once)
-
 **Professional GUI for launching and managing QEMU virtual machines**
 
 A lightweight, friendly desktop GUI written in Python (PySide6) for composing and launching QEMU instances. It focuses on an intuitive visual interface to build QEMU command lines, save VM profiles, control running VMs via QMP, and monitor basic host stats. This project is released under **GPL-2.0**.
